@@ -46,8 +46,15 @@ const createPart = async () => {
   isLoading.value = true
 
   try {
+    // Compose display name: "165580-001 · Rev A · 10K Ohm Resistor"
+    const composedName = [
+      partForm.IPN,
+      partForm.revision ? `Rev ${partForm.revision}` : null,
+      partForm.name
+    ].filter(Boolean).join(' · ')
+
     const partData: CreatePartDto = {
-      name: partForm.name,
+      name: composedName,
       IPN: partForm.IPN,
       revision: partForm.revision || undefined,
       description: partForm.description || undefined,
@@ -58,7 +65,7 @@ const createPart = async () => {
 
     const response = await inventree.createPart(partData)
 
-    toast.add({ title: 'Part created', description: partForm.name, color: 'success' })
+    toast.add({ title: 'Part created', description: composedName, color: 'success' })
 
     let stockItem: { pk: number } | undefined
 
@@ -77,18 +84,23 @@ const createPart = async () => {
       }
     }
 
-    // Print labels and link barcodes if label printing is enabled
+    // Print labels and link barcode if label printing is enabled
     if (partForm.printLabels && stockItem) {
       try {
+        // Generate one barcode for all labels (per-item prints identical copies)
+        const partId = (partForm.IPN || partForm.name).replace(/\s+/g, '-').toUpperCase()
+        const revision = partForm.revision || '0'
+        const uid = Math.random().toString(36).slice(2, 8)
+        const barcode = `${partId}-${revision}-${uid}`
+
         const labelCount = partForm.labelMode === 'per-item'
           ? partForm.stockQuantity
           : 1
+        const quantity = partForm.labelMode === 'one' ? partForm.stockQuantity : undefined
 
+        // Print N labels (identical copies for per-item, or one label with quantity)
         for (let i = 0; i < labelCount; i++) {
-          const barcode = `${partForm.IPN || 'PART'}-${Date.now()}-${i}`
-          const quantity = partForm.labelMode === 'one' ? partForm.stockQuantity : undefined
-
-          const result = await $fetch('/api/print-label', {
+          await $fetch('/api/print-label', {
             method: 'POST',
             body: {
               barcode,
@@ -97,16 +109,18 @@ const createPart = async () => {
               quantity
             }
           })
-
-          // Link barcode to the stock item
-          await inventree.linkBarcode(barcode, stockItem.pk)
-
-          toast.add({
-            title: `Label ${i + 1} of ${labelCount} printed`,
-            description: `Barcode: ${barcode}`,
-            color: 'success'
-          })
         }
+
+        // Link barcode to the stock item (once — all labels share the same barcode)
+        await inventree.linkBarcode(barcode, stockItem.pk)
+
+        // Single summary toast
+        const copies = labelCount > 1 ? ` (${labelCount} identical copies)` : ''
+        toast.add({
+          title: labelCount === 1 ? 'Label printed' : `${labelCount} labels printed`,
+          description: `Barcode: ${barcode}${copies}`,
+          color: 'success'
+        })
       } catch (labelError) {
         const message = labelError instanceof Error ? labelError.message : 'Failed to print label'
         toast.add({ title: 'Label printing failed', description: message, color: 'error' })
@@ -130,9 +144,6 @@ const createPart = async () => {
   }
 }
 
-const generateIPN = () => {
-  partForm.IPN = Math.random().toString().slice(2, 10)
-}
 </script>
 
 <template>
@@ -146,28 +157,23 @@ const generateIPN = () => {
     <UCard class="mb-6">
       <div class="space-y-6">
         <!-- Part Number (IPN) -->
-        <UFormField label="Part Number" description="Internal part number for tracking (optional)">
-          <div class="flex gap-2 w-full">
-            <UInput v-model="partForm.IPN" placeholder="e.g. RES-10K-001" class="flex-1" />
-            <UButton @click="generateIPN" icon="i-lucide-shuffle" variant="outline" color="neutral">
-              Generate
-            </UButton>
-          </div>
+        <UFormField label="Part Number" description="Engineering part number, e.g. 165801-001 (optional)">
+          <UInput v-model="partForm.IPN" placeholder="e.g. 165801-001" />
         </UFormField>
 
         <!-- Part Revision -->
-        <UFormField label="Part Revision" description="Revision identifier for the part (optional)">
-          <UInput v-model="partForm.revision" placeholder="e.g. A, Rev B" />
+        <UFormField label="Part Revision" description="Just the letter or number — &quot;Rev&quot; is prepended automatically (optional)">
+          <UInput v-model="partForm.revision" placeholder="e.g. A" />
         </UFormField>
 
         <!-- Part Name -->
         <UFormField label="Part Name" required description="The display name of the part">
-          <UInput v-model="partForm.name" placeholder="e.g. 10K Ohm Resistor" size="lg" />
+          <UInput v-model="partForm.name" placeholder="e.g. Fork Arm" size="lg" />
         </UFormField>
 
         <!-- Description -->
         <UFormField label="Description" description="Optional description of the part">
-          <UTextarea v-model="partForm.description" placeholder="e.g. 1/4W, 5% tolerance, through-hole" :rows="3" />
+          <UTextarea v-model="partForm.description" placeholder="e.g. Injection molded ABS, black, snap-fit" :rows="3" />
         </UFormField>
 
         <USeparator />
@@ -213,7 +219,7 @@ const generateIPN = () => {
                 </template>
                 <template v-else>
                   Prints {{ partForm.stockQuantity }} labels — one for each item.
-                  Each unique barcode is linked to the same stock item in InvenTree.
+                  All share the same barcode linked to the stock item in InvenTree.
                 </template>
               </p>
             </div>
