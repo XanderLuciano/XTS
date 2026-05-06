@@ -1,0 +1,39 @@
+# Nuxt dev/build outputs
+.output
+.data
+.nuxt
+.nitro
+.cache
+dist
+
+# Node dependencies
+node_modules
+
+# Test coverage
+coverage
+
+# Logs
+logs
+*.log
+
+# Misc
+.DS_Store
+.fleet
+.idea
+.vscode
+
+# Local env files
+.env
+.env.*
+!.env.example
+
+# Container images
+*.tar
+*.tar.gz
+*.tar.zst
+
+# Deployment (managed by Ansible, not in repo)
+deploy.sh
+
+# Preserved stash patch from pre-history-rewrite backup
+.xts-stash-preserved.patch

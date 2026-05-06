@@ -1,0 +1,13 @@
+{
+  "enabled": true,
+  "name": "Deploy Update",
+  "description": "Bumps the package.json version (patch by default), commits all changes, creates a git tag, runs tests, builds the app, and deploys using deploy.sh.",
+  "version": "1",
+  "when": {
+    "type": "userTriggered"
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Execute the full deploy workflow in order. Stop and report if any step fails:\n\n1. **Version bump**: Read the current version from package.json, increment the patch version (e.g. 1.2.3 → 1.2.4), and update package.json.\n2. **Commit**: Stage all changes and commit with the message \"release: v{new_version}\".\n3. **Tag**: Create a git tag \"v{new_version}\".\n4. **Test**: Run `npm run test`. If tests fail, stop here and report.\n5. **Build & Deploy**: Run `bash deploy.sh` which builds the Nuxt app, builds the container image, and deploys to the server.\n6. **Report**: Summarize what version was deployed and confirm success.\n\nIMPORTANT: Follow the git-workflow steering rules — only do this if currently on `main` branch, or ask the user to merge first. Do NOT use `git push` unless the user asks for it."
+  }
+}
