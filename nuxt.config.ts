@@ -47,6 +47,10 @@ export default defineNuxtConfig({
   },
 
   runtimeConfig: {
+    // Server-side only (not exposed to client)
+    zebraPrinterUrl: process.env.ZEBRA_PRINTER_URL || 'http://localhost:3420',
+    zebraApiKey: process.env.ZEBRA_API_KEY || '',
+
     public: {
       inventreeApiUrl: '',
       inventreeApiToken: '',
