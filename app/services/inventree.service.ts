@@ -106,6 +106,8 @@ export class InventreeService {
         ...data,
         category: data.category ?? null,
         active: data.active ?? true,
+        component: data.component ?? true,
+        purchaseable: data.purchaseable ?? true,
         virtual: data.virtual ?? false
       }
     })
