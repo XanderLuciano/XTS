@@ -1,9 +1,13 @@
+<script setup lang="ts">
+const config = useRuntimeConfig()
+</script>
+
 <template>
   <div class="container mx-auto p-6 max-w-4xl">
     <div class="flex items-center justify-between mb-6">
       <div>
-        <h1 class="text-2xl font-bold mb-1">XTS Inventory</h1>
-        <p class="text-sm text-gray-600 dark:text-gray-400">Quick and simple shop floor interface</p>
+        <h1 class="text-2xl font-bold mb-1">{{ config.public.appName }}</h1>
+        <p class="text-sm text-gray-600 dark:text-gray-400">{{ config.public.appTagline }}</p>
       </div>
       <NuxtLink to="/config">
         <UButton variant="outline" icon="i-lucide-settings" size="sm">

@@ -11,8 +11,17 @@ useHead({
   }
 })
 
-const title = 'XTS Inventory'
-const description = 'XTS inventory management interface powered by InvenTree.'
+const config = useRuntimeConfig()
+const title = config.public.appName
+const description = config.public.appTagline
+
+const sidebarBrand = computed(() => {
+  const words = (config.public.appName as string).split(' ')
+  return {
+    highlight: words[0] || '',
+    rest: words.slice(1).join(' ')
+  }
+})
 
 useSeoMeta({
   title,
@@ -85,8 +94,8 @@ const settingsNav = [
       <UDashboardSidebar>
         <template #header>
           <NuxtLink to="/" class="flex items-center gap-2 px-1">
-            <span class="font-bold text-lg bg-gradient-to-r from-primary-500 to-primary-400 bg-clip-text text-transparent tracking-wide">XTS</span>
-            <span class="text-sm text-muted">Inventory</span>
+            <span class="font-bold text-lg bg-gradient-to-r from-primary-500 to-primary-400 bg-clip-text text-transparent tracking-wide">{{ sidebarBrand.highlight }}</span>
+            <span class="text-sm text-muted">{{ sidebarBrand.rest }}</span>
           </NuxtLink>
         </template>
 

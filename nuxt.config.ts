@@ -48,6 +48,8 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     public: {
+      appName: 'XTS Inventory',
+      appTagline: 'Quick and simple shop floor interface',
       inventreeApiUrl: '',
       inventreeApiToken: '',
       useMockApi: false,
