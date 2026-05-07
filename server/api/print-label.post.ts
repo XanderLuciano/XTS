@@ -60,9 +60,6 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const { barcode, partName, partNumber, quantity } =
-    await readBody<PrintLabelBody>(event)
-
   if (!barcode || !partName || !partNumber) {
     throw createError({
       statusCode: 400,
