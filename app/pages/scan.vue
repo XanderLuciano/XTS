@@ -119,7 +119,7 @@ const partForm = ref<PartForm>({
   image: ''
 })
 const isCreating = ref(false)
-const createStock = ref(false)
+const createStock = ref(true)
 const stockQuantity = ref(1)
 const linkBarcode = ref(true)
 const currentBarcode = ref<string | null>(null)
@@ -267,7 +267,7 @@ const lookupProduct = async (barcode: string, index: number) => {
         link: response.data.link,
         image: response.data.imageUrl
       }
-      createStock.value = false
+      createStock.value = true
       stockQuantity.value = 1
       currentBarcode.value = barcode
       linkBarcode.value = true

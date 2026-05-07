@@ -19,15 +19,52 @@ const isLoading = ref(false)
 
 const stockQuantityInput = ref<InstanceType<typeof UInput> | null>(null)
 
+// Load persisted settings from localStorage (SSR-safe)
 const partForm = reactive<PartForm>({
   name: '',
   description: '',
   IPN: '',
   revision: '',
-  createStock: false,
+  createStock: true,
   stockQuantity: 1,
   printLabels: false,
   labelMode: 'one'
+})
+
+// Hydrate persisted settings on mount to avoid SSR mismatch
+onMounted(() => {
+  try {
+    const storedPrintLabels = localStorage.getItem('create_part_print_labels')
+    if (storedPrintLabels === 'true') {
+      partForm.printLabels = true
+    }
+
+    const storedLabelMode = localStorage.getItem('create_part_label_mode')
+    if (storedLabelMode === 'one' || storedLabelMode === 'per-item') {
+      partForm.labelMode = storedLabelMode
+    }
+  } catch {
+    // Corrupt or unavailable storage — keep defaults
+  }
+})
+
+// Persist printLabels and labelMode to localStorage when they change
+watch(() => partForm.printLabels, (val) => {
+  if (import.meta.server) return
+  try {
+    localStorage.setItem('create_part_print_labels', String(val))
+  } catch {
+    // Quota exceeded or private browsing — silently ignore
+  }
+})
+
+watch(() => partForm.labelMode, (val) => {
+  if (import.meta.server) return
+  try {
+    localStorage.setItem('create_part_label_mode', val)
+  } catch {
+    // Quota exceeded or private browsing — silently ignore
+  }
 })
 
 watch(() => partForm.createStock, async (checked) => {
@@ -132,15 +169,13 @@ const createPart = async () => {
       }
     }
 
-    // Reset form
+    // Reset form (keep printLabels and labelMode — they persist across sessions)
     partForm.name = ''
     partForm.description = ''
     partForm.IPN = ''
     partForm.revision = ''
-    partForm.createStock = false
+    partForm.createStock = true
     partForm.stockQuantity = 1
-    partForm.printLabels = false
-    partForm.labelMode = 'one'
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to create part'
     toast.add({ title: 'Failed to create part', description: message, color: 'error' })
