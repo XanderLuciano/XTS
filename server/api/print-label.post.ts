@@ -24,9 +24,18 @@ interface QROptions {
   errorCorrection?: 'L' | 'M' | 'Q' | 'H'
 }
 
+interface BarcodeOptions {
+  x: number
+  y: number
+  type: string        // e.g. "CODE128"
+  height?: number
+  narrowBarWidth?: number
+}
+
 type LabelElement =
   | { type: 'text'; content: string; options: TextOptions }
   | { type: 'qrcode'; content: string; options: QROptions }
+  | { type: 'barcode'; content: string; options: BarcodeOptions }
 
 interface PrintResult {
   success: boolean
@@ -67,22 +76,23 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  // Compose label elements
+  // Compose label elements — 2x1" label layout (406x203 dots at 203dpi)
+  // QR code on the left, text stacked on the right, centered on label
   const elements: LabelElement[] = [
+    {
+      type: 'qrcode',
+      content: barcode,
+      options: { x: 40, y: 50, magnification: 4 }
+    },
     {
       type: 'text',
       content: partName,
-      options: { x: 50, y: 20, height: 30 }
+      options: { x: 160, y: 50, height: 35, width: 28 }
     },
     {
       type: 'text',
       content: partNumber,
-      options: { x: 50, y: 60, height: 25 }
-    },
-    {
-      type: 'qrcode',
-      content: barcode,
-      options: { x: 350, y: 50, magnification: 4 }
+      options: { x: 160, y: 95, height: 30, width: 28 }
     }
   ]
 
@@ -91,7 +101,7 @@ export default defineEventHandler(async (event) => {
     elements.push({
       type: 'text',
       content: `Qty: ${quantity}`,
-      options: { x: 50, y: 100, height: 20 }
+      options: { x: 160, y: 135, height: 25, width: 20 }
     })
   }
 
