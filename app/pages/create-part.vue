@@ -5,19 +5,17 @@ interface PartForm {
   name: string
   description: string
   IPN: string
-  active: boolean
-  component: boolean
-  purchaseable: boolean
+  revision: string
   createStock: boolean
   stockQuantity: number
+  printLabels: boolean
+  labelMode: 'one' | 'per-item'
 }
 
 const inventree = useInventreeApi()
 const toast = useToast()
 
-const debugLog = ref<string[]>([])
 const isLoading = ref(false)
-const showAdvanced = ref(false)
 
 const stockQuantityInput = ref<InstanceType<typeof UInput> | null>(null)
 
@@ -25,11 +23,11 @@ const partForm = reactive<PartForm>({
   name: '',
   description: '',
   IPN: '',
-  active: true,
-  component: true,
-  purchaseable: true,
+  revision: '',
   createStock: false,
-  stockQuantity: 1
+  stockQuantity: 1,
+  printLabels: false,
+  labelMode: 'one'
 })
 
 watch(() => partForm.createStock, async (checked) => {
@@ -44,161 +42,201 @@ watch(() => partForm.createStock, async (checked) => {
   }
 })
 
-const addLog = (message: string) => {
-  const timestamp = new Date().toLocaleTimeString()
-  debugLog.value.unshift(`[${timestamp}] ${message}`)
-}
-
 const createPart = async () => {
   isLoading.value = true
-  addLog(`Creating part: ${partForm.name}`)
-  
+
   try {
+    // Compose display name: "165580-001 · Rev A · 10K Ohm Resistor"
+    const composedName = [
+      partForm.IPN,
+      partForm.revision ? `Rev ${partForm.revision}` : null,
+      partForm.name
+    ].filter(Boolean).join(' · ')
+
     const partData: CreatePartDto = {
-      name: partForm.name,
+      name: composedName,
       IPN: partForm.IPN,
-      description: partForm.description,
-      active: partForm.active
+      revision: partForm.revision || undefined,
+      description: partForm.description || undefined,
+      active: true,
+      component: true,
+      purchaseable: true
     }
-    
+
     const response = await inventree.createPart(partData)
-    
-    addLog(`Part created: ${response.pk}`)
-    toast.add({ title: 'Part created', description: partForm.name, color: 'success' })
-    
+
+    toast.add({ title: 'Part created', description: composedName, color: 'success' })
+
+    let stockItem: { pk: number } | undefined
+
     if (partForm.createStock && response.pk) {
-      addLog(`Creating initial stock: ${partForm.stockQuantity} units`)
       try {
         const stockData: AddStockDto = {
           part: response.pk,
           quantity: partForm.stockQuantity,
           notes: 'Initial stock created with part'
         }
-        await inventree.addStock(stockData)
-        addLog(`Stock created: ${partForm.stockQuantity} units`)
+        stockItem = await inventree.addStock(stockData)
         toast.add({ title: 'Initial stock added', description: `${partForm.stockQuantity} units`, color: 'success' })
       } catch (stockError) {
         const message = stockError instanceof Error ? stockError.message : 'Failed to add stock'
-        addLog(`Stock error: ${message}`)
         toast.add({ title: 'Failed to add initial stock', description: message, color: 'error' })
       }
     }
-    
+
+    // Print labels and link barcode if label printing is enabled
+    if (partForm.printLabels && stockItem) {
+      try {
+        // Generate one barcode for all labels (per-item prints identical copies)
+        const partId = (partForm.IPN || partForm.name).replace(/\s+/g, '-').toUpperCase()
+        const revision = partForm.revision || '0'
+        const uid = Math.random().toString(36).slice(2, 8)
+        const barcode = `${partId}-${revision}-${uid}`
+
+        const labelCount = partForm.labelMode === 'per-item'
+          ? partForm.stockQuantity
+          : 1
+        const quantity = partForm.labelMode === 'one' ? partForm.stockQuantity : undefined
+
+        // Print N labels (identical copies for per-item, or one label with quantity)
+        const printerUrl = localStorage.getItem('zebra_printer_url') || ''
+        const printerApiKey = localStorage.getItem('zebra_api_key') || ''
+
+        for (let i = 0; i < labelCount; i++) {
+          await $fetch('/api/print-label', {
+            method: 'POST',
+            body: {
+              barcode,
+              partName: partForm.name,
+              partNumber: partForm.IPN || 'N/A',
+              quantity,
+              printerUrl: printerUrl || undefined,
+              apiKey: printerApiKey || undefined
+            }
+          })
+        }
+
+        // Link barcode to the stock item (once — all labels share the same barcode)
+        await inventree.linkBarcode(barcode, stockItem.pk)
+
+        // Single summary toast
+        const copies = labelCount > 1 ? ` (${labelCount} identical copies)` : ''
+        toast.add({
+          title: labelCount === 1 ? 'Label printed' : `${labelCount} labels printed`,
+          description: `Barcode: ${barcode}${copies}`,
+          color: 'success'
+        })
+      } catch (labelError) {
+        const message = labelError instanceof Error ? labelError.message : 'Failed to print label'
+        toast.add({ title: 'Label printing failed', description: message, color: 'error' })
+      }
+    }
+
     // Reset form
     partForm.name = ''
     partForm.description = ''
     partForm.IPN = ''
+    partForm.revision = ''
     partForm.createStock = false
     partForm.stockQuantity = 1
+    partForm.printLabels = false
+    partForm.labelMode = 'one'
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to create part'
-    addLog(`Error: ${message}`)
     toast.add({ title: 'Failed to create part', description: message, color: 'error' })
   } finally {
     isLoading.value = false
   }
 }
 
-const generateIPN = () => {
-  partForm.IPN = Math.random().toString().slice(2, 10)
-}
-
-const clearLog = () => {
-  debugLog.value = []
-}
-
-const copyLog = () => {
-  navigator.clipboard.writeText(debugLog.value.join('\n'))
-}
 </script>
 
 <template>
   <div class="container mx-auto p-6 max-w-3xl">
     <div class="mb-8">
-      <h1 class="text-2xl font-bold mb-2">Create InvenTree Part</h1>
-      <p class="text-gray-600 dark:text-gray-400">Simple form to create parts in InvenTree</p>
+      <h1 class="text-2xl font-bold mb-2">Create Part</h1>
+      <p class="text-gray-600 dark:text-gray-400">Add a new part to the InvenTree database</p>
     </div>
 
     <!-- Part Creation Form -->
     <UCard class="mb-6">
-      <template #header>
-        <h2 class="text-lg font-semibold">Part Details</h2>
-      </template>
-
-      <div class="space-y-4">
-        <UFormField label="Part Name" required description="The name of the part">
-          <UInput v-model="partForm.name" placeholder="e.g. Resistor 10K" size="lg" />
+      <div class="space-y-6">
+        <!-- Part Number (IPN) -->
+        <UFormField label="Part Number" description="Engineering part number, e.g. 165801-001 (optional)">
+          <UInput v-model="partForm.IPN" placeholder="e.g. 165801-001" />
         </UFormField>
 
+        <!-- Part Revision -->
+        <UFormField label="Part Revision" description="Just the letter or number — &quot;Rev&quot; is prepended automatically (optional)">
+          <UInput v-model="partForm.revision" placeholder="e.g. A" />
+        </UFormField>
+
+        <!-- Part Name -->
+        <UFormField label="Part Name" required description="The display name of the part">
+          <UInput v-model="partForm.name" placeholder="e.g. Fork Arm" size="lg" />
+        </UFormField>
+
+        <!-- Description -->
         <UFormField label="Description" description="Optional description of the part">
-          <UTextarea v-model="partForm.description" placeholder="e.g. 10K Ohm resistor, 1/4W" :rows="3" />
+          <UTextarea v-model="partForm.description" placeholder="e.g. Injection molded ABS, black, snap-fit" :rows="3" />
         </UFormField>
 
-        <UFormField label="Internal Part Number" description="Optional internal part number for tracking">
-          <div class="flex gap-2">
-            <UInput v-model="partForm.IPN" placeholder="e.g. RES-10K-001" class="flex-1" />
-            <UButton @click="generateIPN" icon="i-lucide-shuffle" variant="outline" color="neutral">
-              Generate
-            </UButton>
-          </div>
-        </UFormField>
+        <USeparator />
 
-        <UButton 
-          @click="showAdvanced = !showAdvanced" 
-          variant="ghost" 
-          size="sm"
-          :icon="showAdvanced ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
-        >
-          {{ showAdvanced ? 'Hide' : 'Show' }} Advanced Options
-        </UButton>
-
-        <div v-if="showAdvanced" class="space-y-3 pt-2">
-          <USeparator label="Part Properties" />
-          <div class="flex items-center gap-2">
-            <UCheckbox v-model="partForm.active" />
-            <div>
-              <label class="text-sm font-medium">Active</label>
-              <p class="text-xs text-gray-500">Part is active and available</p>
-            </div>
-          </div>
-          <div class="flex items-center gap-2">
-            <UCheckbox v-model="partForm.component" />
-            <div>
-              <label class="text-sm font-medium">Component</label>
-              <p class="text-xs text-gray-500">Part can be used in assemblies</p>
-            </div>
-          </div>
-          <div class="flex items-center gap-2">
-            <UCheckbox v-model="partForm.purchaseable" />
-            <div>
-              <label class="text-sm font-medium">Purchaseable</label>
-              <p class="text-xs text-gray-500">Part can be purchased from suppliers</p>
-            </div>
-          </div>
-        </div>
-
-        <USeparator label="Initial Stock" />
-
+        <!-- Initial Stock -->
         <div class="space-y-3">
           <div class="flex items-center gap-2">
             <UCheckbox v-model="partForm.createStock" />
             <div>
               <label class="text-sm font-medium">Create Initial Stock</label>
-              <p class="text-xs text-gray-500">Add stock when creating this part</p>
+              <p class="text-xs text-gray-500">Initial stock will be created when the part is saved</p>
             </div>
           </div>
 
           <UFormField v-if="partForm.createStock" label="Stock Quantity" description="Number of units to add">
             <UInput ref="stockQuantityInput" v-model.number="partForm.stockQuantity" type="number" min="1" />
           </UFormField>
+
+          <!-- Label Printing -->
+          <div v-if="partForm.createStock" class="space-y-3 pt-2">
+            <div class="flex items-center gap-2">
+              <UCheckbox v-model="partForm.printLabels" />
+              <div>
+                <label class="text-sm font-medium">Print labels for this stock</label>
+                <p class="text-xs text-gray-500">Print Zebra labels with part name, part number, and QR code</p>
+              </div>
+            </div>
+
+            <div v-if="partForm.printLabels" class="ml-7 space-y-3">
+              <div class="flex items-center gap-4">
+                <URadioGroup
+                  v-model="partForm.labelMode"
+                  :items="[
+                    { label: 'One label for this part', value: 'one' },
+                    { label: 'One label per item', value: 'per-item' }
+                  ]"
+                />
+              </div>
+              <p class="text-xs text-gray-500">
+                <template v-if="partForm.labelMode === 'one'">
+                  Prints a single label with the total quantity ({{ partForm.stockQuantity }}).
+                  Attach it to the bin or container.
+                </template>
+                <template v-else>
+                  Prints {{ partForm.stockQuantity }} labels — one for each item.
+                  All share the same barcode linked to the stock item in InvenTree.
+                </template>
+              </p>
+            </div>
+          </div>
         </div>
       </div>
 
       <template #footer>
         <div class="flex justify-end">
-          <UButton 
-            @click="createPart" 
-            :loading="isLoading" 
+          <UButton
+            @click="createPart"
+            :loading="isLoading"
             :disabled="!partForm.name"
             icon="i-lucide-plus"
             size="lg"
@@ -207,32 +245,6 @@ const copyLog = () => {
           </UButton>
         </div>
       </template>
-    </UCard>
-
-    <!-- Debug Log -->
-    <UCard>
-      <template #header>
-        <div class="flex items-center justify-between">
-          <h2 class="text-lg font-semibold">Debug Log</h2>
-          <div class="flex gap-2">
-            <UButton @click="copyLog" variant="ghost" size="xs" icon="i-lucide-copy">
-              Copy
-            </UButton>
-            <UButton @click="clearLog" variant="ghost" size="xs" icon="i-lucide-trash-2">
-              Clear
-            </UButton>
-          </div>
-        </div>
-      </template>
-
-      <div class="bg-gray-50 dark:bg-gray-900 rounded p-4 font-mono text-xs max-h-96 overflow-y-auto">
-        <div v-if="debugLog.length === 0" class="text-gray-500">
-          No logs yet. Test authentication or create a part to see API responses.
-        </div>
-        <div v-for="(log, index) in debugLog" :key="index" class="mb-2 whitespace-pre-wrap break-all">
-          {{ log }}
-        </div>
-      </div>
     </UCard>
   </div>
 </template>

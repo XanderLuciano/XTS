@@ -41,12 +41,15 @@ export interface StockLocation {
 export interface CreatePartDto {
   name: string
   IPN: string
+  revision?: string
   description?: string
   link?: string
   remote_image?: string
   category?: number | null
   active?: boolean
   virtual?: boolean
+  component?: boolean
+  purchaseable?: boolean
 }
 
 export interface AddStockDto {

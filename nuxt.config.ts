@@ -50,7 +50,9 @@ export default defineNuxtConfig({
     public: {
       inventreeApiUrl: '',
       inventreeApiToken: '',
-      useMockApi: false
+      useMockApi: false,
+      zebraPrinterUrl: '',
+      zebraApiKey: ''
     }
   }
 })

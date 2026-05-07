@@ -3,6 +3,10 @@ const serverUrl = ref('')
 const apiToken = ref('')
 const savedMessage = ref('')
 
+const zebraPrinterUrl = ref('')
+const zebraApiKey = ref('')
+const zebraMessage = ref('')
+
 const { flags, setFlag, load: loadFlags } = useFeatureFlags()
 
 onMounted(() => {
@@ -34,6 +38,28 @@ const testConnection = async () => {
   }
 }
 
+const saveZebraConfig = () => {
+  localStorage.setItem('zebra_printer_url', zebraPrinterUrl.value)
+  localStorage.setItem('zebra_api_key', zebraApiKey.value)
+
+  zebraMessage.value = '✓ Printer configuration saved!'
+
+  setTimeout(() => {
+    zebraMessage.value = ''
+  }, 5000)
+}
+
+const testPrinter = async () => {
+  zebraMessage.value = 'Testing printer connection...'
+  try {
+    const url = zebraPrinterUrl.value.replace(/\/$/, '')
+    await $fetch(`${url}/api/health`)
+    zebraMessage.value = '✓ Printer service is reachable!'
+  } catch (error: any) {
+    zebraMessage.value = `✗ Printer connection failed: ${error.message}`
+  }
+}
+
 // Load from localStorage on mount, fall back to runtimeConfig defaults
 onMounted(() => {
   const config = useRuntimeConfig()
@@ -42,6 +68,12 @@ onMounted(() => {
   
   serverUrl.value = savedUrl || config.public.inventreeApiUrl || ''
   apiToken.value = savedToken || config.public.inventreeApiToken || ''
+
+  const savedPrinterUrl = localStorage.getItem('zebra_printer_url')
+  const savedPrinterKey = localStorage.getItem('zebra_api_key')
+
+  zebraPrinterUrl.value = savedPrinterUrl || config.public.zebraPrinterUrl || ''
+  zebraApiKey.value = savedPrinterKey || config.public.zebraApiKey || ''
 })
 </script>
 
@@ -100,6 +132,43 @@ onMounted(() => {
         <p>3. Click <strong>"Generate Token"</strong> or copy your existing token</p>
         <p>4. Paste the token in the field above</p>
       </div>
+    </UCard>
+
+    <UCard class="mt-6">
+      <template #header>
+        <h2 class="text-lg font-semibold">Zebra Label Printer</h2>
+      </template>
+
+      <div class="space-y-4">
+        <UFormGroup
+          label="Printer Service URL"
+          description="The URL of your zebra-label-printer HTTP API (e.g., http://localhost:3420)"
+        >
+          <UInput v-model="zebraPrinterUrl" placeholder="http://localhost:3420" size="lg" />
+        </UFormGroup>
+
+        <UFormGroup
+          label="Printer API Key"
+          description="API key for the printer service (leave empty if not configured)"
+        >
+          <UInput v-model="zebraApiKey" type="password" placeholder="Optional" size="lg" />
+        </UFormGroup>
+
+        <div v-if="zebraMessage" class="p-4 rounded-lg" :class="zebraMessage.startsWith('✓') ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300' : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300'">
+          {{ zebraMessage }}
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="flex gap-3 justify-end">
+          <UButton @click="testPrinter" variant="outline" icon="i-lucide-printer">
+            Test Connection
+          </UButton>
+          <UButton @click="saveZebraConfig" icon="i-lucide-save" size="lg">
+            Save Printer Config
+          </UButton>
+        </div>
+      </template>
     </UCard>
 
     <UCard class="mt-6">
