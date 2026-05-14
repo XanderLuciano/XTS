@@ -56,6 +56,7 @@ export interface AddStockDto {
   part: number
   quantity: number
   location?: number | null
+  batch?: string | null
   notes?: string
 }
 
@@ -99,4 +100,39 @@ export interface AdjustStockParams {
 export interface PersistedStockTakeLog {
   entries: StockTakeEntry[]
   savedAt: number
+}
+
+export interface BomItem {
+  pk: number
+  part: number
+  sub_part: number
+  sub_part_detail?: {
+    pk: number
+    name: string
+    IPN: string
+    description: string
+    thumbnail: string | null
+    in_stock: number
+  }
+  quantity: number
+  reference: string
+  note: string
+  optional: boolean
+  validated: boolean
+}
+
+export interface CreateBomItemDto {
+  part: number
+  sub_part: number
+  quantity: number
+  reference?: string
+  note?: string
+}
+
+export interface CreateAssemblyDto {
+  name: string
+  IPN: string
+  revision?: string
+  description?: string
+  category?: number | null
 }

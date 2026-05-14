@@ -63,6 +63,16 @@ const primaryNav = [
 
 const toolsNav = [
   {
+    label: 'View Stock',
+    icon: 'i-lucide-warehouse',
+    to: '/stock'
+  },
+  {
+    label: 'BOM',
+    icon: 'i-lucide-layers',
+    to: '/bom'
+  },
+  {
     label: 'Create Part',
     icon: 'i-lucide-plus-circle',
     to: '/create-part'

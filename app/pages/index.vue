@@ -139,6 +139,52 @@ const config = useRuntimeConfig()
           </NuxtLink>
         </template>
       </UCard>
+
+      <UCard>
+        <template #header>
+          <div class="flex items-center gap-2">
+            <div class="p-1.5 bg-indigo-100 dark:bg-indigo-900 rounded-lg">
+              <UIcon name="i-lucide-warehouse" class="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+            </div>
+            <h3 class="text-base font-semibold">View Stock</h3>
+          </div>
+        </template>
+
+        <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">
+          Browse all parts and stock levels in one view.
+        </p>
+
+        <template #footer>
+          <NuxtLink to="/stock">
+            <UButton block size="sm" icon="i-lucide-arrow-right" trailing>
+              View Stock
+            </UButton>
+          </NuxtLink>
+        </template>
+      </UCard>
+
+      <UCard>
+        <template #header>
+          <div class="flex items-center gap-2">
+            <div class="p-1.5 bg-yellow-100 dark:bg-yellow-900 rounded-lg">
+              <UIcon name="i-lucide-layers" class="w-5 h-5 text-yellow-600 dark:text-yellow-400" />
+            </div>
+            <h3 class="text-base font-semibold">BOM</h3>
+          </div>
+        </template>
+
+        <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">
+          Manage assemblies and view stock availability.
+        </p>
+
+        <template #footer>
+          <NuxtLink to="/bom">
+            <UButton block size="sm" icon="i-lucide-arrow-right" trailing>
+              Bill of Materials
+            </UButton>
+          </NuxtLink>
+        </template>
+      </UCard>
     </div>
   </div>
 </template>
