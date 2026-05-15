@@ -175,11 +175,11 @@ const printLabelForStockItem = async (part: Part, stockItem: StockItem) => {
       // Reprint: use the stored barcode
       barcode = storedBarcode
     } else if (stockItem.barcode_hash) {
-      // Has a barcode linked but not in notes (old format) — can't reprint
+      // Has a barcode linked but not in notes (old format) — cannot reprint or overwrite
       toast.add({
-        title: 'Cannot reprint',
-        description: 'This item has an old-format barcode that cannot be reprinted. Use "Relink" to assign a new one.',
-        color: 'warning'
+        title: 'Cannot print label',
+        description: 'This stock item has a legacy barcode linked that is not stored in the system. It cannot be reprinted or overwritten.',
+        color: 'error'
       })
       printingPartPk.value = null
       return
