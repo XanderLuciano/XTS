@@ -328,6 +328,16 @@ export class InventreeService {
     })
   }
 
+  /**
+   * Unlink a barcode from a stock item.
+   */
+  async unlinkBarcode(stockItemPk: number): Promise<void> {
+    await this.api('/barcode/unlink/', {
+      method: 'POST',
+      body: { stockitem: stockItemPk }
+    })
+  }
+
   // --- BOM Methods ---
 
   /**

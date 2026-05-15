@@ -29,6 +29,12 @@ const editingBatchValue = ref('')
 const isEditingCategory = ref(false)
 const editingCategoryValue = ref<number | null>(null)
 
+// Legacy barcode replace confirmation
+const isReplaceConfirmOpen = ref(false)
+const replacePart = ref<Part | null>(null)
+const replaceStockItem = ref<StockItem | null>(null)
+const isReplacingBarcode = ref(false)
+
 const categoryItems = computed(() =>
   Array.from(categoryMap.value.entries()).map(([pk, name]) => ({ label: name, value: pk }))
 )
@@ -175,12 +181,10 @@ const printLabelForStockItem = async (part: Part, stockItem: StockItem) => {
       // Reprint: use the stored barcode
       barcode = storedBarcode
     } else if (stockItem.barcode_hash) {
-      // Has a barcode linked but not in notes (old format) — cannot reprint or overwrite
-      toast.add({
-        title: 'Cannot print label',
-        description: 'This stock item has a legacy barcode linked that is not stored in the system. It cannot be reprinted or overwritten.',
-        color: 'error'
-      })
+      // Has a barcode linked but not in notes (old format) — ask user to confirm replacement
+      replacePart.value = part
+      replaceStockItem.value = stockItem
+      isReplaceConfirmOpen.value = true
       printingPartPk.value = null
       return
     } else {
@@ -227,6 +231,68 @@ const printLabelForStockItem = async (part: Part, stockItem: StockItem) => {
     toast.add({ title: 'Print failed', description: message, color: 'error' })
   } finally {
     printingPartPk.value = null
+  }
+}
+
+const confirmReplaceBarcode = async () => {
+  if (!replacePart.value || !replaceStockItem.value) return
+  isReplacingBarcode.value = true
+
+  const part = replacePart.value
+  const stockItem = replaceStockItem.value
+
+  try {
+    // Unlink old barcode
+    await inventree.unlinkBarcode(stockItem.pk)
+
+    // Generate new deterministic barcode
+    const barcode = generateBarcode({
+      ipn: part.IPN,
+      revision: part.revision,
+      batch: stockItem.batch || '',
+      stockItemPk: stockItem.pk
+    })
+
+    // Link new barcode
+    await inventree.linkBarcode(barcode, stockItem.pk)
+
+    // Store in notes
+    const updatedNotes = setBarcodeInNotes(stockItem.notes, barcode)
+    await inventree.updateStockItem(stockItem.pk, { notes: updatedNotes })
+    stockItem.notes = updatedNotes
+    stockItem.barcode_hash = 'linked'
+
+    // Print label
+    const printerUrl = localStorage.getItem('zebra_printer_url') || ''
+    const printerApiKey = localStorage.getItem('zebra_api_key') || ''
+
+    await $fetch('/api/print-label', {
+      method: 'POST',
+      body: {
+        barcode,
+        partName: part.name,
+        partNumber: part.IPN || 'N/A',
+        quantity: stockItem.quantity > 1 ? stockItem.quantity : undefined,
+        vendor: stockItem.batch || undefined,
+        printerUrl: printerUrl || undefined,
+        apiKey: printerApiKey || undefined
+      }
+    })
+
+    const vendorLabel = stockItem.batch ? ` (${stockItem.batch})` : ''
+    toast.add({
+      title: 'Barcode replaced & label printed',
+      description: `${part.name}${vendorLabel} — ${barcode}`,
+      color: 'success'
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to replace barcode'
+    toast.add({ title: 'Replace failed', description: message, color: 'error' })
+  } finally {
+    isReplacingBarcode.value = false
+    isReplaceConfirmOpen.value = false
+    replacePart.value = null
+    replaceStockItem.value = null
   }
 }
 
@@ -612,6 +678,30 @@ onMounted(() => {
               </div>
               <UIcon name="i-lucide-printer" class="w-4 h-4 text-gray-400" />
             </button>
+          </div>
+        </div>
+      </template>
+    </UModal>
+
+    <!-- Replace Barcode Confirmation Modal -->
+    <UModal v-model:open="isReplaceConfirmOpen">
+      <template #content>
+        <div class="p-6 max-w-sm">
+          <h3 class="text-lg font-bold mb-2">Replace Barcode</h3>
+          <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+            This stock item has a legacy barcode that was not stored in the system.
+            Replacing it will <strong>permanently invalidate</strong> the old barcode — any existing labels with the old code will no longer scan.
+          </p>
+          <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+            A new barcode will be generated, linked, and printed.
+          </p>
+          <div class="flex gap-2 justify-end">
+            <UButton variant="outline" color="neutral" size="sm" @click="isReplaceConfirmOpen = false">
+              Cancel
+            </UButton>
+            <UButton color="warning" size="sm" :loading="isReplacingBarcode" icon="i-lucide-refresh-cw" @click="confirmReplaceBarcode">
+              Replace & Print
+            </UButton>
           </div>
         </div>
       </template>
