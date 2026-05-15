@@ -32,6 +32,56 @@ export function extractBarcodeFromNotes(notes: string | null | undefined): strin
 }
 
 /**
+ * Extract JIRA ticket references from a stock item's notes field.
+ * Looks for a line starting with "tickets:" prefix.
+ * Returns an array of ticket strings (e.g. ['PI-1234', 'MFG-12345']) or empty array.
+ */
+export function extractTicketsFromNotes(notes: string | null | undefined): string[] {
+  if (!notes) return []
+  const match = notes.match(/tickets:(.+)/)
+  if (!match || !match[1]) return []
+  return match[1].split(',').map(t => t.trim()).filter(Boolean)
+}
+
+/**
+ * Sanitize and validate a raw JIRA ticket input string.
+ * Accepts comma-separated tickets, trims whitespace, uppercases,
+ * and validates each matches {TEXT}-{NUMBER} format.
+ * Returns { valid: true, tickets: [...] } or { valid: false, invalid: [...] }
+ */
+export function sanitizeTickets(input: string): { valid: true; tickets: string[] } | { valid: false; invalid: string[] } {
+  if (!input.trim()) return { valid: true, tickets: [] }
+
+  const raw = input.split(',').map(t => t.trim().toUpperCase()).filter(Boolean)
+  const ticketPattern = /^[A-Z]+-\d+$/
+  const invalid = raw.filter(t => !ticketPattern.test(t))
+
+  if (invalid.length > 0) {
+    return { valid: false, invalid }
+  }
+
+  return { valid: true, tickets: raw }
+}
+
+/**
+ * Append or update JIRA ticket references in notes text.
+ * Stores as "tickets:PI-1234,MFG-12345" (comma-separated, no spaces).
+ * Replaces an existing tickets: line if present, otherwise appends.
+ */
+export function setTicketsInNotes(existingNotes: string | null | undefined, tickets: string[]): string {
+  const prefix = `tickets:${tickets.join(',')}`
+  if (!existingNotes) return prefix
+
+  // Replace existing tickets line
+  if (existingNotes.match(/tickets:.+/)) {
+    return existingNotes.replace(/tickets:.+/, prefix)
+  }
+
+  // Append
+  return `${existingNotes}\n${prefix}`
+}
+
+/**
  * Append or update a barcode reference in notes text.
  * Replaces an existing barcode: line if present, otherwise appends.
  */

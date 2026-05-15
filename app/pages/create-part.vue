@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { CreatePartDto, AddStockDto, PartCategory } from '~/types/inventree'
-import { generateBarcode, setBarcodeInNotes } from '~/utils/barcode'
+import { generateBarcode, setBarcodeInNotes, sanitizeTickets, setTicketsInNotes } from '~/utils/barcode'
 import { sanitizeRevision } from '~/utils/sanitizeRevision'
 
 // Pre-defined vendor options
@@ -14,6 +14,7 @@ interface PartForm {
   vendor: string
   createStock: boolean
   stockQuantity: number
+  jiraTickets: string
   printLabels: boolean
   labelMode: 'one' | 'per-item'
 }
@@ -34,6 +35,7 @@ const partForm = reactive<PartForm>({
   vendor: '',
   createStock: true,
   stockQuantity: 1,
+  jiraTickets: '',
   printLabels: false,
   labelMode: 'one'
 })
@@ -41,6 +43,15 @@ const partForm = reactive<PartForm>({
 const vendorItems = computed(() =>
   VENDOR_OPTIONS.map(v => ({ label: v, value: v }))
 )
+
+const ticketValidation = computed(() => {
+  if (!partForm.jiraTickets.trim()) return { valid: true, message: '' }
+  const result = sanitizeTickets(partForm.jiraTickets)
+  if (!result.valid) {
+    return { valid: false, message: `Invalid ticket format: ${result.invalid.join(', ')}. Expected format: ABC-1234` }
+  }
+  return { valid: true, message: '' }
+})
 
 // Hydrate persisted settings on mount to avoid SSR mismatch
 onMounted(() => {
@@ -141,6 +152,18 @@ const createPart = async () => {
   isLoading.value = true
 
   try {
+    // Validate JIRA tickets if provided
+    let parsedTickets: string[] = []
+    if (partForm.createStock && partForm.jiraTickets.trim()) {
+      const ticketResult = sanitizeTickets(partForm.jiraTickets)
+      if (!ticketResult.valid) {
+        toast.add({ title: 'Invalid JIRA tickets', description: `Fix: ${ticketResult.invalid.join(', ')}`, color: 'error' })
+        isLoading.value = false
+        return
+      }
+      parsedTickets = ticketResult.tickets
+    }
+
     // Sanitize revision input
     if (partForm.revision) {
       partForm.revision = sanitizeRevision(partForm.revision)
@@ -202,6 +225,12 @@ const createPart = async () => {
               quantity: partForm.stockQuantity,
               notes: 'Stock added via webapp'
             })
+            // Store JIRA tickets in notes if provided
+            if (parsedTickets.length > 0) {
+              const currentNotes = existing.notes || ''
+              const updatedNotes = setTicketsInNotes(currentNotes, parsedTickets)
+              await inventree.updateStockItem(existing.pk, { notes: updatedNotes })
+            }
             // Preserve barcode_hash info for label printing decision
             if (hasBarcode) {
               action = 'added-stock-existing-vendor'
@@ -216,11 +245,14 @@ const createPart = async () => {
             })
           } else {
             // Same part, new vendor — create new stock item with batch
+            const stockNotes = parsedTickets.length > 0
+              ? setTicketsInNotes('New vendor stock created via webapp', parsedTickets)
+              : 'New vendor stock created via webapp'
             stockItem = await inventree.createStockItem({
               part: partPk,
               quantity: partForm.stockQuantity,
               batch: partForm.vendor,
-              notes: 'New vendor stock created via webapp'
+              notes: stockNotes
             })
             action = isExistingPart ? 'added-stock-new-vendor' : action
             toast.add({
@@ -231,10 +263,14 @@ const createPart = async () => {
           }
         } else {
           // No vendor specified — use standard addStock (merges into first item)
+          const baseNotes = `Stock ${isExistingPart ? 'added' : 'created'} via webapp`
+          const stockNotes = parsedTickets.length > 0
+            ? setTicketsInNotes(baseNotes, parsedTickets)
+            : baseNotes
           const stockData: AddStockDto = {
             part: partPk,
             quantity: partForm.stockQuantity,
-            notes: `Stock ${isExistingPart ? 'added' : 'created'} via webapp`
+            notes: stockNotes
           }
           stockItem = await inventree.addStock(stockData)
           toast.add({
@@ -326,6 +362,7 @@ const createPart = async () => {
     partForm.description = ''
     partForm.IPN = ''
     partForm.revision = ''
+    partForm.jiraTickets = ''
     partForm.createStock = true
     partForm.stockQuantity = 1
   } catch (error) {
@@ -429,6 +466,22 @@ const createPart = async () => {
             <UInput ref="stockQuantityInput" v-model.number="partForm.stockQuantity" type="number" min="1" class="w-full" />
           </UFormField>
 
+          <!-- JIRA Ticket(s) -->
+          <UFormField
+            v-if="partForm.createStock"
+            label="JIRA Ticket(s)"
+            description="Optional — comma-separated ticket references (e.g. PI-1234, MFG-12345)"
+            :error="!ticketValidation.valid ? ticketValidation.message : undefined"
+          >
+            <UInput
+              v-model="partForm.jiraTickets"
+              placeholder="e.g. PI-1234, MFG-12345"
+              class="w-full"
+              :ui="{ base: 'font-mono' }"
+              :color="!ticketValidation.valid ? 'error' : undefined"
+            />
+          </UFormField>
+
           <!-- Label Printing -->
           <div v-if="partForm.createStock" class="space-y-3 pt-2">
             <div class="flex items-center gap-2">
@@ -469,7 +522,7 @@ const createPart = async () => {
           <UButton
             @click="createPart"
             :loading="isLoading"
-            :disabled="!partForm.name"
+            :disabled="!partForm.name || !ticketValidation.valid"
             icon="i-lucide-plus"
             size="lg"
           >
