@@ -309,9 +309,9 @@ export class InventreeService {
   }
 
   /**
-   * Update a part's fields (e.g. category).
+   * Update a part's fields.
    */
-  async updatePart(partPk: number, data: { category?: number | null }): Promise<void> {
+  async updatePart(partPk: number, data: { name?: string; IPN?: string; revision?: string; description?: string; category?: number | null }): Promise<void> {
     await this.api(`/part/${partPk}/`, {
       method: 'PATCH',
       body: data
@@ -428,6 +428,23 @@ export class InventreeService {
    */
   async deleteBomItem(bomItemId: number): Promise<void> {
     await this.api(`/bom/${bomItemId}/`, { method: 'DELETE' })
+  }
+
+  /**
+   * Update a BOM item (e.g. change quantity).
+   */
+  async updateBomItem(bomItemId: number, data: { quantity?: number; reference?: string; note?: string }): Promise<void> {
+    await this.api(`/bom/${bomItemId}/`, {
+      method: 'PATCH',
+      body: data
+    })
+  }
+
+  /**
+   * Delete an assembly part entirely.
+   */
+  async deleteAssembly(partPk: number): Promise<void> {
+    await this.api(`/part/${partPk}/`, { method: 'DELETE' })
   }
 
 }

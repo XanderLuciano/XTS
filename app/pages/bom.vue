@@ -15,6 +15,30 @@ const bomItems = ref<BomItem[]>([])
 const isLoadingBom = ref(false)
 const buildQty = ref(1)
 
+// Edit mode state
+const isEditing = ref(false)
+const editingQuantities = ref<Map<number, number>>(new Map())
+const isSavingEdit = ref(false)
+const pendingAdditions = ref<{ part: Part; quantity: number }[]>([])
+const pendingDeletions = ref<Set<number>>(new Set())
+
+// Assembly detail editing
+const editAssemblyName = ref('')
+const editAssemblyIPN = ref('')
+const editAssemblyRevision = ref('')
+const editAssemblyDescription = ref('')
+
+// Shared search for edit mode
+const editSearch = useBomComponentSearch(() => {
+  const existingPks = new Set(bomItems.value.map(i => i.sub_part))
+  for (const item of pendingAdditions.value) existingPks.add(item.part.pk)
+  return existingPks
+})
+
+// Delete assembly state
+const isDeleteConfirmOpen = ref(false)
+const isDeletingAssembly = ref(false)
+
 const fetchAssemblies = async () => {
   isLoadingAssemblies.value = true
   try {
@@ -65,6 +89,129 @@ const canBuild = computed(() => {
   return min === Infinity ? 0 : min
 })
 
+// --- Edit Mode ---
+const startEditing = () => {
+  if (!selectedAssembly.value) return
+  isEditing.value = true
+  editingQuantities.value = new Map(bomItems.value.map(item => [item.pk, item.quantity]))
+  pendingAdditions.value = []
+  pendingDeletions.value = new Set()
+  editSearch.clear()
+
+  // Populate assembly detail fields
+  editAssemblyName.value = selectedAssembly.value.name
+  editAssemblyIPN.value = selectedAssembly.value.IPN || ''
+  editAssemblyRevision.value = selectedAssembly.value.revision || ''
+  editAssemblyDescription.value = selectedAssembly.value.description || ''
+}
+
+const cancelEditing = () => {
+  isEditing.value = false
+  editingQuantities.value = new Map()
+  pendingAdditions.value = []
+  pendingDeletions.value = new Set()
+  editSearch.clear()
+}
+
+const markForDeletion = (itemPk: number) => {
+  pendingDeletions.value.add(itemPk)
+}
+
+const unmarkForDeletion = (itemPk: number) => {
+  pendingDeletions.value.delete(itemPk)
+}
+
+const addEditComponent = (part: Part) => {
+  pendingAdditions.value.push({ part, quantity: 1 })
+  editSearch.clear()
+}
+
+const removeEditAddition = (index: number) => {
+  pendingAdditions.value.splice(index, 1)
+}
+
+const saveEdits = async () => {
+  if (!selectedAssembly.value) return
+  isSavingEdit.value = true
+
+  try {
+    // 0. Update assembly details if changed
+    const detailChanges: Record<string, string> = {}
+    if (editAssemblyName.value !== selectedAssembly.value.name) detailChanges.name = editAssemblyName.value
+    if (editAssemblyIPN.value !== (selectedAssembly.value.IPN || '')) detailChanges.IPN = editAssemblyIPN.value
+    if (editAssemblyRevision.value !== (selectedAssembly.value.revision || '')) detailChanges.revision = editAssemblyRevision.value
+    if (editAssemblyDescription.value !== (selectedAssembly.value.description || '')) detailChanges.description = editAssemblyDescription.value
+
+    if (Object.keys(detailChanges).length > 0) {
+      await inventree.updatePart(selectedAssembly.value.pk, detailChanges)
+      // Update local state
+      if (detailChanges.name) selectedAssembly.value.name = detailChanges.name
+      if ('IPN' in detailChanges) selectedAssembly.value.IPN = detailChanges.IPN
+      if ('revision' in detailChanges) selectedAssembly.value.revision = detailChanges.revision
+      if ('description' in detailChanges) selectedAssembly.value.description = detailChanges.description
+    }
+
+    // 1. Delete removed items
+    for (const pk of pendingDeletions.value) {
+      await inventree.deleteBomItem(pk)
+    }
+
+    // 2. Update quantities for existing items
+    for (const item of bomItems.value) {
+      if (pendingDeletions.value.has(item.pk)) continue
+      const newQty = editingQuantities.value.get(item.pk)
+      if (newQty != null && newQty !== item.quantity) {
+        await inventree.updateBomItem(item.pk, { quantity: newQty })
+      }
+    }
+
+    // 3. Add new items
+    for (const addition of pendingAdditions.value) {
+      await inventree.createBomItem({
+        part: selectedAssembly.value.pk,
+        sub_part: addition.part.pk,
+        quantity: addition.quantity
+      })
+    }
+
+    toast.add({ title: 'BOM updated', color: 'success' })
+
+    // Refresh BOM and assembly list
+    isEditing.value = false
+    await fetchAssemblies()
+    await selectAssembly(selectedAssembly.value)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to save changes'
+    toast.add({ title: 'Error', description: message, color: 'error' })
+  } finally {
+    isSavingEdit.value = false
+  }
+}
+
+// --- Delete Assembly ---
+const confirmDeleteAssembly = () => {
+  isDeleteConfirmOpen.value = true
+}
+
+const deleteAssembly = async () => {
+  if (!selectedAssembly.value) return
+  isDeletingAssembly.value = true
+
+  try {
+    await inventree.deleteAssembly(selectedAssembly.value.pk)
+    toast.add({ title: 'Assembly deleted', description: selectedAssembly.value.name, color: 'success' })
+    selectedAssembly.value = null
+    bomItems.value = []
+    isDeleteConfirmOpen.value = false
+    await fetchAssemblies()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to delete assembly'
+    toast.add({ title: 'Error', description: message, color: 'error' })
+  } finally {
+    isDeletingAssembly.value = false
+  }
+}
+
 // --- Create Assembly state ---
 const newAssembly = ref<CreateAssemblyDto>({
   name: '',
@@ -77,11 +224,13 @@ const showAdvancedOptions = ref(false)
 const categories = ref<{ pk: number; name: string }[]>([])
 const isLoadingCategories = ref(false)
 const printLabel = ref(false)
-const bomComponentSearch = ref('')
-const bomComponentResults = ref<Part[]>([])
-const isSearchingParts = ref(false)
 const pendingBomItems = ref<{ part: Part; quantity: number }[]>([])
 const isCreating = ref(false)
+
+// Shared search for create mode
+const createSearch = useBomComponentSearch(() => {
+  return new Set(pendingBomItems.value.map(i => i.part.pk))
+})
 
 // Persist category and printLabel preference in localStorage (SSR-safe)
 watch(() => newAssembly.value.category, (val) => {
@@ -101,29 +250,6 @@ watch(printLabel, (val) => {
     localStorage.setItem('bom_create_print_label', String(val))
   } catch { /* ignore */ }
 })
-
-let partSearchTimeout: ReturnType<typeof setTimeout> | null = null
-
-const searchPartsForBom = () => {
-  if (partSearchTimeout) clearTimeout(partSearchTimeout)
-  if (!bomComponentSearch.value) {
-    bomComponentResults.value = []
-    return
-  }
-  partSearchTimeout = setTimeout(async () => {
-    isSearchingParts.value = true
-    try {
-      const results = await inventree.searchParts(bomComponentSearch.value)
-      // Filter out parts already added
-      const addedPks = new Set(pendingBomItems.value.map(i => i.part.pk))
-      bomComponentResults.value = results.filter(p => !addedPks.has(p.pk))
-    } catch {
-      bomComponentResults.value = []
-    } finally {
-      isSearchingParts.value = false
-    }
-  }, 300)
-}
 
 const toggleAdvancedOptions = async () => {
   showAdvancedOptions.value = !showAdvancedOptions.value
@@ -152,8 +278,7 @@ const categoryItems = computed(() =>
 
 const addComponentToBom = (part: Part) => {
   pendingBomItems.value.push({ part, quantity: 1 })
-  bomComponentSearch.value = ''
-  bomComponentResults.value = []
+  createSearch.clear()
 }
 
 const removeComponentFromBom = (index: number) => {
@@ -352,10 +477,14 @@ onMounted(() => {
           <div v-else>
             <!-- Assembly header -->
             <UCard class="mb-4">
-              <div class="flex items-center justify-between">
+              <div v-if="!isEditing" class="flex items-center justify-between">
                 <div>
                   <h2 class="text-lg font-bold">{{ selectedAssembly.name }}</h2>
-                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                  <div class="flex items-center gap-3 text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                    <span v-if="selectedAssembly.IPN" class="font-mono">{{ selectedAssembly.IPN }}</span>
+                    <span v-if="selectedAssembly.revision">Rev {{ selectedAssembly.revision }}</span>
+                  </div>
+                  <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
                     {{ selectedAssembly.description || 'No description' }}
                   </p>
                 </div>
@@ -378,13 +507,121 @@ onMounted(() => {
                   </div>
                 </div>
               </div>
+
+              <!-- Editable assembly details -->
+              <div v-else class="space-y-3">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label class="block text-xs font-medium text-gray-500 mb-1">Name</label>
+                    <UInput v-model="editAssemblyName" size="sm" class="w-full" />
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium text-gray-500 mb-1">IPN</label>
+                    <UInput v-model="editAssemblyIPN" size="sm" class="w-full" />
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium text-gray-500 mb-1">Revision</label>
+                    <UInput v-model="editAssemblyRevision" size="sm" class="w-full" />
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium text-gray-500 mb-1">Description</label>
+                    <UInput v-model="editAssemblyDescription" size="sm" class="w-full" />
+                  </div>
+                </div>
+              </div>
+
+              <!-- Save/Cancel (edit mode only) -->
+              <div v-if="isEditing" class="flex gap-2 mt-3">
+                <UButton
+                  size="xs"
+                  icon="i-lucide-check"
+                  :loading="isSavingEdit"
+                  @click="saveEdits"
+                >
+                  Save Changes
+                </UButton>
+                <UButton
+                  size="xs"
+                  variant="outline"
+                  color="neutral"
+                  icon="i-lucide-x"
+                  @click="cancelEditing"
+                >
+                  Cancel
+                </UButton>
+              </div>
             </UCard>
 
-            <!-- Shortage summary -->
-            <div v-if="totalShortages > 0" class="mb-4">
-              <UBadge color="error" variant="subtle">
-                {{ totalShortages }} component{{ totalShortages !== 1 ? 's' : '' }} short for {{ buildQty }} build{{ buildQty !== 1 ? 's' : '' }}
-              </UBadge>
+            <!-- Shortage + action bar -->
+            <div v-if="!isEditing" class="flex items-center justify-between mb-4">
+              <div>
+                <UBadge v-if="totalShortages > 0" color="error" variant="subtle">
+                  {{ totalShortages }} component{{ totalShortages !== 1 ? 's' : '' }} short for {{ buildQty }} build{{ buildQty !== 1 ? 's' : '' }}
+                </UBadge>
+              </div>
+              <div class="flex gap-2">
+                <UButton
+                  size="xs"
+                  variant="outline"
+                  icon="i-lucide-pencil"
+                  @click="startEditing"
+                >
+                  Edit BOM
+                </UButton>
+                <UButton
+                  size="xs"
+                  variant="outline"
+                  color="error"
+                  icon="i-lucide-trash-2"
+                  @click="confirmDeleteAssembly"
+                >
+                  Delete
+                </UButton>
+              </div>
+            </div>
+
+            <!-- Add components in edit mode -->
+            <div v-if="isEditing" class="mb-4">
+              <UCard>
+                <template #header>
+                  <h4 class="text-sm font-semibold">Add Components</h4>
+                </template>
+                <UInput
+                  v-model="editSearch.searchQuery.value"
+                  placeholder="Search parts to add..."
+                  icon="i-lucide-search"
+                  :loading="editSearch.isSearching.value"
+                  size="sm"
+                  @input="editSearch.search"
+                />
+                <div
+                  v-if="editSearch.searchResults.value.length > 0"
+                  class="mt-1 border border-gray-200 dark:border-gray-700 rounded-md max-h-36 overflow-y-auto bg-white dark:bg-gray-900"
+                >
+                  <button
+                    v-for="part in editSearch.searchResults.value"
+                    :key="part.pk"
+                    class="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 border-b border-gray-100 dark:border-gray-800 last:border-0"
+                    @click="addEditComponent(part)"
+                  >
+                    <span class="font-medium">{{ part.name }}</span>
+                    <span class="text-xs text-gray-500 ml-2">{{ part.IPN || '' }}</span>
+                  </button>
+                </div>
+                <!-- Pending additions -->
+                <div v-if="pendingAdditions.length > 0" class="mt-3 space-y-2">
+                  <div
+                    v-for="(item, index) in pendingAdditions"
+                    :key="item.part.pk"
+                    class="flex items-center gap-2 p-2 rounded bg-green-50 dark:bg-green-950/20 text-sm"
+                  >
+                    <UBadge color="success" variant="subtle" size="xs">NEW</UBadge>
+                    <span class="flex-1 truncate font-medium">{{ item.part.name }}</span>
+                    <UInput v-model.number="item.quantity" type="number" :min="1" size="xs" class="w-16" />
+                    <UButton size="xs" variant="ghost" color="error" icon="i-lucide-x" @click="removeEditAddition(index)" />
+                  </div>
+                </div>
+              </UCard>
             </div>
 
             <!-- BOM table -->
@@ -394,7 +631,7 @@ onMounted(() => {
                 Loading BOM...
               </div>
 
-              <div v-else-if="bomItems.length === 0" class="text-center py-8 text-gray-500 text-sm">
+              <div v-else-if="bomItems.length === 0 && !isEditing" class="text-center py-8 text-gray-500 text-sm">
                 This assembly has no BOM items.
               </div>
 
@@ -405,9 +642,10 @@ onMounted(() => {
                       <th class="text-left px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Component</th>
                       <th class="text-left px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">IPN</th>
                       <th class="text-right px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Qty/Build</th>
-                      <th class="text-right px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Required</th>
-                      <th class="text-right px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">In Stock</th>
-                      <th class="text-right px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Shortage</th>
+                      <th v-if="!isEditing" class="text-right px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Required</th>
+                      <th v-if="!isEditing" class="text-right px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">In Stock</th>
+                      <th v-if="!isEditing" class="text-right px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Shortage</th>
+                      <th v-if="isEditing" class="w-10 px-2 py-3"></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -415,7 +653,10 @@ onMounted(() => {
                       v-for="item in bomItems"
                       :key="item.pk"
                       class="border-b border-gray-100 dark:border-gray-800"
-                      :class="getShortage(item) > 0 ? 'bg-red-50 dark:bg-red-950/20' : ''"
+                      :class="[
+                        !isEditing && getShortage(item) > 0 ? 'bg-red-50 dark:bg-red-950/20' : '',
+                        pendingDeletions.has(item.pk) ? 'opacity-40 line-through' : ''
+                      ]"
                     >
                       <td class="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
                         {{ item.sub_part_detail?.name || `Part #${item.sub_part}` }}
@@ -423,13 +664,22 @@ onMounted(() => {
                       <td class="px-4 py-3 text-gray-600 dark:text-gray-400 font-mono text-xs">
                         {{ item.sub_part_detail?.IPN || '—' }}
                       </td>
-                      <td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">
-                        {{ item.quantity }}
+                      <td class="px-4 py-3 text-right">
+                        <UInput
+                          v-if="isEditing && !pendingDeletions.has(item.pk)"
+                          :model-value="editingQuantities.get(item.pk)"
+                          type="number"
+                          :min="1"
+                          size="xs"
+                          class="w-16 ml-auto"
+                          @update:model-value="(v: any) => editingQuantities.set(item.pk, Number(v))"
+                        />
+                        <span v-else class="text-gray-700 dark:text-gray-300">{{ item.quantity }}</span>
                       </td>
-                      <td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">
+                      <td v-if="!isEditing" class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">
                         {{ item.quantity * buildQty }}
                       </td>
-                      <td class="px-4 py-3 text-right">
+                      <td v-if="!isEditing" class="px-4 py-3 text-right">
                         <UBadge
                           :color="(item.sub_part_detail?.in_stock ?? 0) > 0 ? 'success' : 'error'"
                           variant="subtle"
@@ -438,7 +688,7 @@ onMounted(() => {
                           {{ item.sub_part_detail?.in_stock ?? 0 }}
                         </UBadge>
                       </td>
-                      <td class="px-4 py-3 text-right">
+                      <td v-if="!isEditing" class="px-4 py-3 text-right">
                         <UBadge
                           v-if="getShortage(item) > 0"
                           color="error"
@@ -449,11 +699,50 @@ onMounted(() => {
                         </UBadge>
                         <span v-else class="text-green-600 dark:text-green-400 text-xs font-medium">OK</span>
                       </td>
+                      <td v-if="isEditing" class="px-2 py-3 text-center">
+                        <UButton
+                          v-if="!pendingDeletions.has(item.pk)"
+                          size="xs"
+                          variant="ghost"
+                          color="error"
+                          icon="i-lucide-trash-2"
+                          @click="markForDeletion(item.pk)"
+                        />
+                        <UButton
+                          v-else
+                          size="xs"
+                          variant="ghost"
+                          color="neutral"
+                          icon="i-lucide-undo-2"
+                          @click="unmarkForDeletion(item.pk)"
+                        />
+                      </td>
                     </tr>
                   </tbody>
                 </table>
               </div>
             </UCard>
+
+            <!-- Delete confirmation modal -->
+            <UModal v-model:open="isDeleteConfirmOpen">
+              <template #content>
+                <div class="p-6 max-w-sm">
+                  <h3 class="text-lg font-bold mb-2">Delete Assembly</h3>
+                  <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                    Are you sure you want to delete <strong>{{ selectedAssembly?.name }}</strong>?
+                    This will remove the assembly and all its BOM items. This cannot be undone.
+                  </p>
+                  <div class="flex gap-2 justify-end">
+                    <UButton variant="outline" color="neutral" size="sm" @click="isDeleteConfirmOpen = false">
+                      Cancel
+                    </UButton>
+                    <UButton color="error" size="sm" :loading="isDeletingAssembly" icon="i-lucide-trash-2" @click="deleteAssembly">
+                      Delete
+                    </UButton>
+                  </div>
+                </div>
+              </template>
+            </UModal>
           </div>
         </div>
       </div>
@@ -540,20 +829,20 @@ onMounted(() => {
           <!-- Search for parts -->
           <div class="mb-4">
             <UInput
-              v-model="bomComponentSearch"
+              v-model="createSearch.searchQuery.value"
               placeholder="Search parts to add..."
               icon="i-lucide-search"
-              :loading="isSearchingParts"
-              @input="searchPartsForBom"
+              :loading="createSearch.isSearching.value"
+              @input="createSearch.search"
             />
 
             <!-- Search results dropdown -->
             <div
-              v-if="bomComponentResults.length > 0"
+              v-if="createSearch.searchResults.value.length > 0"
               class="mt-1 border border-gray-200 dark:border-gray-700 rounded-md max-h-48 overflow-y-auto bg-white dark:bg-gray-900"
             >
               <button
-                v-for="part in bomComponentResults"
+                v-for="part in createSearch.searchResults.value"
                 :key="part.pk"
                 class="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 border-b border-gray-100 dark:border-gray-800 last:border-0"
                 @click="addComponentToBom(part)"
