@@ -97,21 +97,16 @@ export default defineEventHandler(async (event) => {
     }
   ]
 
-  // Add quantity as a small text element if provided
-  if (quantity && quantity > 1) {
-    elements.push({
-      type: 'text',
-      content: `Qty: ${quantity}`,
-      options: { x: 160, y: 135, height: 25, width: 20 }
-    })
-  }
+  // Add quantity and/or vendor on the third line
+  const infoParts: string[] = []
+  if (quantity && quantity > 1) infoParts.push(`Qty: ${quantity}`)
+  if (vendor) infoParts.push(vendor)
 
-  // Add vendor/batch code if provided
-  if (vendor) {
+  if (infoParts.length > 0) {
     elements.push({
       type: 'text',
-      content: vendor,
-      options: { x: 160, y: (quantity && quantity > 1) ? 160 : 135, height: 25, width: 20 }
+      content: infoParts.join(' · '),
+      options: { x: 160, y: 135, height: 25, width: 20 }
     })
   }
 
