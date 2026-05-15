@@ -79,6 +79,8 @@ export default defineEventHandler(async (event) => {
 
   // Compose label elements — 2x1" label layout (406x203 dots at 203dpi)
   // QR code on the left, text stacked on the right, centered on label
+  // NOTE: This layout mirrors app/utils/label.ts composeLabelElements().
+  // Keep both in sync when making layout changes.
   const elements: LabelElement[] = [
     {
       type: 'qrcode',
