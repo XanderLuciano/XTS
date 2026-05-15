@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import type { CreatePartDto, AddStockDto, PartCategory } from '~/types/inventree'
+import { generateBarcode, setBarcodeInNotes } from '~/utils/barcode'
+import { sanitizeRevision } from '~/utils/sanitizeRevision'
 
 // Pre-defined vendor options
 const VENDOR_OPTIONS = ['YihShan', 'UMT', 'NRG', 'Prime', 'CIM', 'CIMTAS', 'KMS']
@@ -139,6 +141,11 @@ const createPart = async () => {
   isLoading.value = true
 
   try {
+    // Sanitize revision input
+    if (partForm.revision) {
+      partForm.revision = sanitizeRevision(partForm.revision)
+    }
+
     // Compose display name: "165580-001 · Rev A · 10K Ohm Resistor"
     const composedName = [
       partForm.IPN,
@@ -148,22 +155,18 @@ const createPart = async () => {
 
     let partPk: number | undefined
     let isExistingPart = false
+    let action: 'created-part' | 'added-stock-new-vendor' | 'added-stock-existing-vendor' = 'created-part'
 
-    // Check if a part with same IPN + revision already exists
+    // Step 1: Check if a part with same IPN + revision already exists
     if (partForm.IPN) {
       const existingPart = await inventree.findPartByIPNAndRevision(partForm.IPN, partForm.revision || '')
       if (existingPart) {
         partPk = existingPart.pk
         isExistingPart = true
-        toast.add({
-          title: 'Existing part found',
-          description: `${existingPart.name} — adding stock to existing part`,
-          color: 'info'
-        })
       }
     }
 
-    // Create new part if it doesn't exist
+    // Step 2: Create new part only if IPN+Rev is truly new
     if (!isExistingPart) {
       const partData: CreatePartDto = {
         name: composedName,
@@ -178,36 +181,67 @@ const createPart = async () => {
 
       const response = await inventree.createPart(partData)
       partPk = response.pk
+      action = 'created-part'
       toast.add({ title: 'Part created', description: composedName, color: 'success' })
     }
 
     let stockItem: { pk: number } | undefined
 
-    // Add stock with vendor tracking
+    // Step 3: Handle stock
     if (partForm.createStock && partPk) {
       try {
         if (partForm.vendor) {
-          // Vendor-aware: find or create stock item by batch
-          stockItem = await inventree.addStockWithVendor(
-            partPk,
-            partForm.stockQuantity,
-            partForm.vendor,
-            `Stock ${isExistingPart ? 'added' : 'created'} via webapp`
-          )
-          toast.add({
-            title: 'Stock added',
-            description: `${partForm.stockQuantity} units (vendor: ${partForm.vendor})`,
-            color: 'success'
-          })
+          // Check if stock item with this vendor already exists
+          const existingVendorStock = await inventree.getStockItemsByBatch(partPk, partForm.vendor)
+
+          if (existingVendorStock.length > 0) {
+            // Same part, same vendor — add to existing stock item
+            const existing = existingVendorStock[0]!
+            const hasBarcode = !!existing.barcode_hash
+            stockItem = await inventree.addToExistingStock(existing.pk, {
+              quantity: partForm.stockQuantity,
+              notes: 'Stock added via webapp'
+            })
+            // Preserve barcode_hash info for label printing decision
+            if (hasBarcode) {
+              action = 'added-stock-existing-vendor'
+            } else {
+              // Stock item exists but has no barcode — we can still print one
+              action = isExistingPart ? 'added-stock-new-vendor' : action
+            }
+            toast.add({
+              title: 'Added to existing stock',
+              description: `+${partForm.stockQuantity} units to ${partForm.vendor} stock`,
+              color: 'success'
+            })
+          } else {
+            // Same part, new vendor — create new stock item with batch
+            stockItem = await inventree.createStockItem({
+              part: partPk,
+              quantity: partForm.stockQuantity,
+              batch: partForm.vendor,
+              notes: 'New vendor stock created via webapp'
+            })
+            action = isExistingPart ? 'added-stock-new-vendor' : action
+            toast.add({
+              title: isExistingPart ? 'New vendor stock created' : 'Stock created',
+              description: `${partForm.stockQuantity} units (vendor: ${partForm.vendor})`,
+              color: 'success'
+            })
+          }
         } else {
-          // No vendor: use standard addStock
+          // No vendor specified — use standard addStock (merges into first item)
           const stockData: AddStockDto = {
             part: partPk,
             quantity: partForm.stockQuantity,
-            notes: 'Initial stock created with part'
+            notes: `Stock ${isExistingPart ? 'added' : 'created'} via webapp`
           }
           stockItem = await inventree.addStock(stockData)
-          toast.add({ title: 'Stock added', description: `${partForm.stockQuantity} units`, color: 'success' })
+          toast.add({
+            title: isExistingPart ? 'Added to existing stock' : 'Stock created',
+            description: `${partForm.stockQuantity} units`,
+            color: 'success'
+          })
         }
       } catch (stockError) {
         const message = stockError instanceof Error ? stockError.message : 'Failed to add stock'
@@ -215,21 +249,31 @@ const createPart = async () => {
       }
     }
 
-    // Print labels and link barcode if label printing is enabled
-    if (partForm.printLabels && stockItem) {
+    // Summary toast for existing part cases
+    if (isExistingPart && action !== 'created-part') {
+      toast.add({
+        title: 'Existing part detected',
+        description: `${composedName} already exists — stock updated`,
+        color: 'info'
+      })
+    }
+
+    // Step 4: Print labels and link barcode if enabled
+    // Skip printing if we just added to an existing vendor's stock (it already has a label)
+    if (partForm.printLabels && stockItem && action !== 'added-stock-existing-vendor') {
       try {
-        // Generate one barcode for all labels (per-item prints identical copies)
-        const partId = (partForm.IPN || partForm.name).replace(/\s+/g, '-').toUpperCase()
-        const revision = partForm.revision || '0'
-        const uid = Math.random().toString(36).slice(2, 8)
-        const barcode = `${partId}-${revision}-${uid}`
+        const barcode = generateBarcode({
+          ipn: partForm.IPN,
+          revision: partForm.revision,
+          batch: partForm.vendor,
+          stockItemPk: stockItem.pk
+        })
 
         const labelCount = partForm.labelMode === 'per-item'
           ? partForm.stockQuantity
           : 1
         const quantity = partForm.labelMode === 'one' ? partForm.stockQuantity : undefined
 
-        // Print N labels (identical copies for per-item, or one label with quantity)
         const printerUrl = localStorage.getItem('zebra_printer_url') || ''
         const printerApiKey = localStorage.getItem('zebra_api_key') || ''
 
@@ -241,16 +285,21 @@ const createPart = async () => {
               partName: partForm.name,
               partNumber: partForm.IPN || 'N/A',
               quantity,
+              vendor: partForm.vendor || undefined,
               printerUrl: printerUrl || undefined,
               apiKey: printerApiKey || undefined
             }
           })
         }
 
-        // Link barcode to the stock item (once — all labels share the same barcode)
+        // Link barcode to the stock item
         await inventree.linkBarcode(barcode, stockItem.pk)
 
-        // Single summary toast
+        // Store barcode in notes for future reprinting
+        const currentNotes = (stockItem as any).notes || ''
+        const updatedNotes = setBarcodeInNotes(currentNotes, barcode)
+        await inventree.updateStockItem(stockItem.pk, { notes: updatedNotes })
+
         const copies = labelCount > 1 ? ` (${labelCount} identical copies)` : ''
         toast.add({
           title: labelCount === 1 ? 'Label printed' : `${labelCount} labels printed`,
@@ -261,6 +310,15 @@ const createPart = async () => {
         const message = labelError instanceof Error ? labelError.message : 'Failed to print label'
         toast.add({ title: 'Label printing failed', description: message, color: 'error' })
       }
+    }
+
+    // Inform user label was skipped when adding to existing vendor stock
+    if (partForm.printLabels && action === 'added-stock-existing-vendor') {
+      toast.add({
+        title: 'Label not printed',
+        description: 'Stock was added to an existing item that already has a barcode label',
+        color: 'warning'
+      })
     }
 
     // Reset form (keep vendor, printLabels, labelMode — they persist across sessions)
@@ -291,12 +349,12 @@ const createPart = async () => {
     <UCard class="mb-6">
       <div class="space-y-6">
         <!-- Part Number (IPN) -->
-        <UFormField label="Part Number" description="Engineering part number, e.g. 165801-001 (optional)">
+        <UFormField label="Part Number" required description="Engineering part number, e.g. 165801-001">
           <UInput v-model="partForm.IPN" placeholder="e.g. 165801-001" class="w-full" />
         </UFormField>
 
         <!-- Part Revision -->
-        <UFormField label="Part Revision" description="Just the letter or number — &quot;Rev&quot; is prepended automatically (optional)">
+        <UFormField label="Part Revision" required description="Just the letter or number — &quot;Rev&quot; is prepended automatically">
           <UInput v-model="partForm.revision" placeholder="e.g. A" class="w-full" />
         </UFormField>
 

@@ -25,6 +25,7 @@ export interface StockItem {
   location: number | null
   serial: string | null
   batch: string | null
+  barcode_hash: string
   notes: string
 }
 

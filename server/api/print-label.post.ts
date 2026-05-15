@@ -48,6 +48,7 @@ interface PrintLabelBody {
   partName: string
   partNumber: string
   quantity?: number
+  vendor?: string
   printerUrl?: string
   apiKey?: string
 }
@@ -55,7 +56,7 @@ interface PrintLabelBody {
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig(event)
 
-  const { barcode, partName, partNumber, quantity, printerUrl: bodyPrinterUrl, apiKey: bodyApiKey } =
+  const { barcode, partName, partNumber, quantity, vendor, printerUrl: bodyPrinterUrl, apiKey: bodyApiKey } =
     await readBody<PrintLabelBody>(event)
 
   // Client-provided values (from localStorage) take priority over env defaults
@@ -102,6 +103,15 @@ export default defineEventHandler(async (event) => {
       type: 'text',
       content: `Qty: ${quantity}`,
       options: { x: 160, y: 135, height: 25, width: 20 }
+    })
+  }
+
+  // Add vendor/batch code if provided
+  if (vendor) {
+    elements.push({
+      type: 'text',
+      content: vendor,
+      options: { x: 160, y: (quantity && quantity > 1) ? 160 : 135, height: 25, width: 20 }
     })
   }
 

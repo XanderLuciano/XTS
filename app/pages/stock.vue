@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Part, PartCategory, StockItem } from '~/types/inventree'
 import type { DropdownMenuItem } from '@nuxt/ui'
+import { generateBarcode, extractBarcodeFromNotes, setBarcodeInNotes } from '~/utils/barcode'
 
 const VENDOR_OPTIONS = ['YihShan', 'UMT', 'NRG', 'Prime', 'CIM', 'CIMTAS', 'KMS']
 
@@ -163,11 +164,41 @@ const vendorPickerStockItems = ref<StockItem[]>([])
 const printLabelForStockItem = async (part: Part, stockItem: StockItem) => {
   printingPartPk.value = part.pk
   isVendorPickerOpen.value = false
+
   try {
-    const partId = (part.IPN || part.name).replace(/\s+/g, '-').toUpperCase()
-    const revision = part.revision || '0'
-    const uid = Math.random().toString(36).slice(2, 8)
-    const barcode = `${partId}-${revision}-${uid}`
+    let barcode: string
+
+    // Check if we can find the barcode in notes (for reprinting)
+    const storedBarcode = extractBarcodeFromNotes(stockItem.notes)
+
+    if (storedBarcode) {
+      // Reprint: use the stored barcode
+      barcode = storedBarcode
+    } else if (stockItem.barcode_hash) {
+      // Has a barcode linked but not in notes (old format) — can't reprint
+      toast.add({
+        title: 'Cannot reprint',
+        description: 'This item has an old-format barcode that cannot be reprinted. Use "Relink" to assign a new one.',
+        color: 'warning'
+      })
+      printingPartPk.value = null
+      return
+    } else {
+      // No barcode at all — generate new deterministic one
+      barcode = generateBarcode({
+        ipn: part.IPN,
+        revision: part.revision,
+        batch: stockItem.batch || '',
+        stockItemPk: stockItem.pk
+      })
+
+      // Link and store
+      await inventree.linkBarcode(barcode, stockItem.pk)
+      const updatedNotes = setBarcodeInNotes(stockItem.notes, barcode)
+      await inventree.updateStockItem(stockItem.pk, { notes: updatedNotes })
+      stockItem.notes = updatedNotes
+      stockItem.barcode_hash = 'linked'
+    }
 
     const printerUrl = localStorage.getItem('zebra_printer_url') || ''
     const printerApiKey = localStorage.getItem('zebra_api_key') || ''
@@ -179,20 +210,15 @@ const printLabelForStockItem = async (part: Part, stockItem: StockItem) => {
         partName: part.name,
         partNumber: part.IPN || 'N/A',
         quantity: stockItem.quantity > 1 ? stockItem.quantity : undefined,
+        vendor: stockItem.batch || undefined,
         printerUrl: printerUrl || undefined,
         apiKey: printerApiKey || undefined
       }
     })
 
-    try {
-      await inventree.linkBarcode(barcode, stockItem.pk)
-    } catch {
-      // Barcode may already be linked
-    }
-
     const vendorLabel = stockItem.batch ? ` (${stockItem.batch})` : ''
     toast.add({
-      title: 'Label printed',
+      title: storedBarcode ? 'Label reprinted' : 'Label printed',
       description: `${part.name}${vendorLabel} — ${barcode}`,
       color: 'success'
     })
