@@ -66,16 +66,27 @@ async function applyLabelConfig() {
     dpi: labelConfigForm.dpi
   })
 
-  // Send config ZPL to printer if connected
+  // Send config ZPL to printer if connected, then auto-calibrate
   if (localPrinterConnected.value) {
     isSendingConfig.value = true
     try {
-      const zpl = toConfigZpl()
-      const ok = await printZpl(zpl)
-      if (ok) {
-        toast.add({ title: 'Label config applied', description: `${labelConfigForm.widthInches}" × ${labelConfigForm.heightInches}" sent to printer`, color: 'success' })
-      } else {
+      // Step 1: Send media config (width, max length, media type, tracking mode)
+      const configZpl = toConfigZpl()
+      const configOk = await printZpl(configZpl)
+      if (!configOk) {
         toast.add({ title: 'Config saved but failed to send to printer', description: localPrinterError.value || 'Unknown error', color: 'error' })
+        return
+      }
+
+      // Step 2: Trigger sensor calibration so the printer learns the actual gap position
+      // Small delay to let the printer process the config before calibrating
+      await new Promise(resolve => setTimeout(resolve, 500))
+      const calZpl = calibrateZpl()
+      const calOk = await printZpl(calZpl)
+      if (calOk) {
+        toast.add({ title: 'Label config applied & calibrating', description: `${labelConfigForm.widthInches}" × ${labelConfigForm.heightInches}" — printer is sensing gaps`, color: 'success' })
+      } else {
+        toast.add({ title: 'Config sent but calibration failed', description: localPrinterError.value || 'Unknown error', color: 'warning' })
       }
     } finally {
       isSendingConfig.value = false

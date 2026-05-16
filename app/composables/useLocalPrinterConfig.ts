@@ -85,26 +85,30 @@ export function useLocalPrinterConfig() {
    *
    * Commands sent:
    * - ^PW: Print width in dots
-   * - ^LL: Label length in dots
+   * - ^ML: Maximum label length (label + 1" gap search margin)
    * - ^LH: Label home (origin) at 0,0
    * - ^MNN: Media type = non-continuous (die-cut labels)
    * - ^MNA: Media tracking = auto (use gap/notch sensor to detect label edges)
-   * - ^XZ: End format / apply
    *
-   * The ^MNA command is critical — without it the printer blindly advances
-   * by ^LL dots per label, which causes cumulative Y drift over time.
-   * With auto-sensing enabled, the printer uses the transmissive gap sensor
-   * to find the actual top-of-form between labels.
+   * NOTE: We intentionally do NOT send ^LL here. Per Zebra docs, ^LL is
+   * ignored for non-continuous (gap/mark) media — the printer determines
+   * actual label length from the gap sensor during calibration (~JC).
+   *
+   * ^ML (Maximum Label Length) tells the printer how far to search for a
+   * gap. Zebra recommends setting it at least 1" longer than the actual
+   * label. If ^ML is too short, calibration will fail to find the gap.
    *
    * These are persistent — the printer remembers them across power cycles.
    */
   function toConfigZpl(): string {
     const w = widthDots.value
     const h = heightDots.value
+    // Max label length = label height + 1 inch margin for gap search
+    const maxLength = h + config.value.dpi
 
     let zpl = '^XA\n'
     zpl += `^PW${w}\n`       // Print width
-    zpl += `^LL${h}\n`       // Label length
+    zpl += `^ML${maxLength}\n` // Max label length (height + 1" search margin)
     zpl += '^LH0,0\n'        // Label home origin
     zpl += '^MNN\n'           // Media type: non-continuous (die-cut)
     zpl += '^MNA\n'           // Media tracking: auto (gap sensing enabled)
@@ -120,6 +124,10 @@ export function useLocalPrinterConfig() {
    * the printer accurately detects label boundaries and eliminates Y drift.
    *
    * The printer will feed 2-4 labels during calibration — this is normal.
+   *
+   * IMPORTANT: Send toConfigZpl() BEFORE calibrating so the printer knows
+   * the media type (die-cut) and max search length. Then ~JC will correctly
+   * learn the actual label length and gap position from the sensor.
    */
   function calibrateZpl(): string {
     return '~JC\n'
