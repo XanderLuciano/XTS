@@ -511,15 +511,6 @@ onMounted(() => {
       <template #footer>
         <div class="flex gap-3 justify-end">
           <UButton
-            @click="calibratePrinter"
-            variant="outline"
-            icon="i-lucide-scan-line"
-            :loading="isCalibrating"
-            :disabled="!localPrinterConnected"
-          >
-            Calibrate
-          </UButton>
-          <UButton
             @click="openLabelConfig"
             variant="outline"
             icon="i-lucide-ruler"
@@ -636,9 +627,22 @@ onMounted(() => {
 
       <template #footer>
         <div class="flex justify-between w-full">
-          <UButton @click="resetLabelConfigForm" variant="ghost" color="neutral" size="sm">
-            Reset to Default
-          </UButton>
+          <div class="flex gap-2">
+            <UButton @click="resetLabelConfigForm" variant="ghost" color="neutral" size="sm">
+              Reset to Default
+            </UButton>
+            <UButton
+              @click="calibratePrinter"
+              variant="outline"
+              color="neutral"
+              size="sm"
+              icon="i-lucide-scan-line"
+              :loading="isCalibrating"
+              :disabled="!localPrinterConnected"
+            >
+              Calibrate Sensor
+            </UButton>
+          </div>
           <div class="flex gap-3">
             <UButton @click="labelConfigOpen = false" variant="outline" color="neutral">
               Cancel
