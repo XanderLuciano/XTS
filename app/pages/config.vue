@@ -23,6 +23,16 @@ const {
   disconnect: disconnectLocalPrinter,
   printZpl
 } = useLocalPrinter()
+const {
+  config: labelConfig,
+  widthDots,
+  heightDots,
+  DEFAULT_CONFIG: defaultLabelConfig,
+  load: loadLabelConfig,
+  setConfig: setLabelConfig,
+  resetToDefault: resetLabelConfig,
+  toConfigZpl
+} = useLocalPrinterConfig()
 
 const toast = useToast()
 const localPrinterMessage = ref('')
@@ -30,9 +40,68 @@ const serverTestMessage = ref('')
 const isTestingServer = ref(false)
 const isTestingLocal = ref(false)
 
+// --- Label Config Modal ---
+const labelConfigOpen = ref(false)
+const labelConfigForm = reactive({
+  widthInches: 2,
+  heightInches: 1,
+  dpi: 203
+})
+const isSendingConfig = ref(false)
+
+function openLabelConfig() {
+  // Sync form with current saved config
+  labelConfigForm.widthInches = labelConfig.value.widthInches
+  labelConfigForm.heightInches = labelConfig.value.heightInches
+  labelConfigForm.dpi = labelConfig.value.dpi
+  labelConfigOpen.value = true
+}
+
+async function applyLabelConfig() {
+  // Save to localStorage
+  setLabelConfig({
+    widthInches: labelConfigForm.widthInches,
+    heightInches: labelConfigForm.heightInches,
+    dpi: labelConfigForm.dpi
+  })
+
+  // Send config ZPL to printer if connected
+  if (localPrinterConnected.value) {
+    isSendingConfig.value = true
+    try {
+      const zpl = toConfigZpl()
+      const ok = await printZpl(zpl)
+      if (ok) {
+        toast.add({ title: 'Label config applied', description: `${labelConfigForm.widthInches}" × ${labelConfigForm.heightInches}" sent to printer`, color: 'success' })
+      } else {
+        toast.add({ title: 'Config saved but failed to send to printer', description: localPrinterError.value || 'Unknown error', color: 'error' })
+      }
+    } finally {
+      isSendingConfig.value = false
+    }
+  } else {
+    toast.add({ title: 'Label config saved', description: 'Connect a printer to apply settings to the device', color: 'info' })
+  }
+
+  labelConfigOpen.value = false
+}
+
+function resetLabelConfigForm() {
+  labelConfigForm.widthInches = defaultLabelConfig.widthInches
+  labelConfigForm.heightInches = defaultLabelConfig.heightInches
+  labelConfigForm.dpi = defaultLabelConfig.dpi
+}
+
+const dpiOptions = [
+  { label: '203 DPI (standard)', value: 203 },
+  { label: '300 DPI (high-res)', value: 300 },
+  { label: '600 DPI (ultra-high)', value: 600 }
+]
+
 onMounted(() => {
   loadFlags()
   loadPrinterSettings()
+  loadLabelConfig()
   // Listen for USB plug/unplug events to keep status reactive
   listenForUsbEvents()
   // Try to auto-reconnect to a previously paired local printer
@@ -156,7 +225,7 @@ const testPrintLocal = async () => {
 
   try {
     const testData = generateTestLabelData()
-    const elements = composeLabelElements(testData)
+    const elements = composeLabelElements(testData, widthDots.value, heightDots.value)
     const zpl = elementsToZpl(elements)
     const ok = await printZpl(zpl)
 
@@ -411,6 +480,14 @@ onMounted(() => {
       <template #footer>
         <div class="flex gap-3 justify-end">
           <UButton
+            @click="openLabelConfig"
+            variant="outline"
+            icon="i-lucide-ruler"
+            :disabled="!localPrinterSupported"
+          >
+            Configure Label
+          </UButton>
+          <UButton
             v-if="localPrinterConnected"
             @click="handleDisconnectLocal"
             variant="outline"
@@ -461,5 +538,77 @@ onMounted(() => {
         </div>
       </div>
     </UCard>
+
+    <!-- Label Config Modal -->
+    <UModal v-model:open="labelConfigOpen" title="Configure Label Size" description="Set the label dimensions for your local USB printer. Applying will send the configuration directly to the connected printer.">
+      <template #body>
+        <div class="space-y-5">
+          <div class="grid grid-cols-2 gap-4">
+            <UFormField label="Width (inches)">
+              <UInput
+                v-model.number="labelConfigForm.widthInches"
+                type="number"
+                :min="0.5"
+                :max="8"
+                :step="0.25"
+                size="lg"
+              />
+            </UFormField>
+            <UFormField label="Height (inches)">
+              <UInput
+                v-model.number="labelConfigForm.heightInches"
+                type="number"
+                :min="0.25"
+                :max="12"
+                :step="0.25"
+                size="lg"
+              />
+            </UFormField>
+          </div>
+
+          <UFormField label="Printer Density">
+            <USelectMenu
+              v-model="labelConfigForm.dpi"
+              :items="dpiOptions"
+              value-key="value"
+              :searchable="false"
+              size="lg"
+            />
+          </UFormField>
+
+          <div class="p-3 rounded-lg bg-gray-50 dark:bg-gray-800 text-sm">
+            <div class="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+              <UIcon name="i-lucide-info" class="w-4 h-4 shrink-0" />
+              <span>
+                Computed size: <strong>{{ Math.round(labelConfigForm.widthInches * labelConfigForm.dpi) }}</strong> × <strong>{{ Math.round(labelConfigForm.heightInches * labelConfigForm.dpi) }}</strong> dots
+              </span>
+            </div>
+          </div>
+
+          <div v-if="!localPrinterConnected" class="p-3 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300 text-sm">
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-alert-circle" class="w-4 h-4 shrink-0" />
+              <span>No printer connected. Config will be saved locally but not sent to the printer until you connect one.</span>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <template #footer>
+        <div class="flex justify-between w-full">
+          <UButton @click="resetLabelConfigForm" variant="ghost" color="neutral" size="sm">
+            Reset to Default
+          </UButton>
+          <div class="flex gap-3">
+            <UButton @click="labelConfigOpen = false" variant="outline" color="neutral">
+              Cancel
+            </UButton>
+            <UButton @click="applyLabelConfig" icon="i-lucide-send" :loading="isSendingConfig">
+              {{ localPrinterConnected ? 'Apply & Send to Printer' : 'Save Config' }}
+            </UButton>
+          </div>
+        </div>
+      </template>
+    </UModal>
   </div>
 </template>

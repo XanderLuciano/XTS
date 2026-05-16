@@ -91,12 +91,15 @@ export function usePrinterSettings() {
    */
   async function printViaLocal(data: LabelData): Promise<{ success: boolean; error?: string }> {
     const { isConnected, printZpl, lastError } = useLocalPrinter()
+    const { widthDots, heightDots, load: loadConfig } = useLocalPrinterConfig()
+
+    loadConfig()
 
     if (!isConnected.value) {
       return { success: false, error: 'Local printer is not connected' }
     }
 
-    const elements = composeLabelElements(data)
+    const elements = composeLabelElements(data, widthDots.value, heightDots.value)
     const zpl = elementsToZpl(elements)
     const ok = await printZpl(zpl)
 
