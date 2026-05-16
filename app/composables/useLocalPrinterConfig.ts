@@ -88,7 +88,13 @@ export function useLocalPrinterConfig() {
    * - ^LL: Label length in dots
    * - ^LH: Label home (origin) at 0,0
    * - ^MNN: Media type = non-continuous (die-cut labels)
+   * - ^MNA: Media tracking = auto (use gap/notch sensor to detect label edges)
    * - ^XZ: End format / apply
+   *
+   * The ^MNA command is critical — without it the printer blindly advances
+   * by ^LL dots per label, which causes cumulative Y drift over time.
+   * With auto-sensing enabled, the printer uses the transmissive gap sensor
+   * to find the actual top-of-form between labels.
    *
    * These are persistent — the printer remembers them across power cycles.
    */
@@ -101,8 +107,22 @@ export function useLocalPrinterConfig() {
     zpl += `^LL${h}\n`       // Label length
     zpl += '^LH0,0\n'        // Label home origin
     zpl += '^MNN\n'           // Media type: non-continuous (die-cut)
+    zpl += '^MNA\n'           // Media tracking: auto (gap sensing enabled)
     zpl += '^XZ\n'
     return zpl
+  }
+
+  /**
+   * Generate ZPL command to trigger a full sensor calibration.
+   *
+   * This sends ~JC which makes the printer feed a few labels while
+   * measuring the gap/mark sensor thresholds. After calibration,
+   * the printer accurately detects label boundaries and eliminates Y drift.
+   *
+   * The printer will feed 2-4 labels during calibration — this is normal.
+   */
+  function calibrateZpl(): string {
+    return '~JC\n'
   }
 
   return {
@@ -114,6 +134,7 @@ export function useLocalPrinterConfig() {
     save,
     setConfig,
     resetToDefault,
-    toConfigZpl
+    toConfigZpl,
+    calibrateZpl
   }
 }

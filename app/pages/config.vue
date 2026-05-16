@@ -31,7 +31,8 @@ const {
   load: loadLabelConfig,
   setConfig: setLabelConfig,
   resetToDefault: resetLabelConfig,
-  toConfigZpl
+  toConfigZpl,
+  calibrateZpl
 } = useLocalPrinterConfig()
 
 const toast = useToast()
@@ -90,6 +91,36 @@ function resetLabelConfigForm() {
   labelConfigForm.widthInches = defaultLabelConfig.widthInches
   labelConfigForm.heightInches = defaultLabelConfig.heightInches
   labelConfigForm.dpi = defaultLabelConfig.dpi
+}
+
+// --- Calibrate Local Printer ---
+const isCalibrating = ref(false)
+
+async function calibratePrinter() {
+  if (!localPrinterConnected.value) {
+    localPrinterMessage.value = '✗ No printer connected. Connect a printer first to calibrate.'
+    setTimeout(() => { localPrinterMessage.value = '' }, 5000)
+    return
+  }
+
+  isCalibrating.value = true
+  localPrinterMessage.value = 'Calibrating sensor — printer will feed a few labels...'
+
+  try {
+    const zpl = calibrateZpl()
+    const ok = await printZpl(zpl)
+    if (ok) {
+      localPrinterMessage.value = '✓ Calibration command sent. Printer is sensing label gaps.'
+      toast.add({ title: 'Calibration started', description: 'Printer will feed 2-4 labels to measure gap sensor', color: 'success' })
+    } else {
+      localPrinterMessage.value = `✗ Calibration failed: ${localPrinterError.value || 'Unknown error'}`
+    }
+  } catch (error: any) {
+    localPrinterMessage.value = `✗ Calibration failed: ${error.message}`
+  } finally {
+    isCalibrating.value = false
+    setTimeout(() => { localPrinterMessage.value = '' }, 5000)
+  }
 }
 
 const dpiOptions = [
@@ -479,6 +510,15 @@ onMounted(() => {
 
       <template #footer>
         <div class="flex gap-3 justify-end">
+          <UButton
+            @click="calibratePrinter"
+            variant="outline"
+            icon="i-lucide-scan-line"
+            :loading="isCalibrating"
+            :disabled="!localPrinterConnected"
+          >
+            Calibrate
+          </UButton>
           <UButton
             @click="openLabelConfig"
             variant="outline"
