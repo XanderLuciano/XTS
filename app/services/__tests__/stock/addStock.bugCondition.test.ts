@@ -50,6 +50,7 @@ describe('addStock - Bug Condition Exploration', () => {
             location: null,
             serial: null,
             batch: null,
+            barcode_hash: '',
             notes: ''
           }
         ]

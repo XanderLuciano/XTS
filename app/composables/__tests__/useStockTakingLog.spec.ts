@@ -3,6 +3,8 @@ import { useStockTakingLog } from '../useStockTakingLog'
 import { InventreeService } from '~/services/inventree.service'
 import type { Part, StockItem } from '~/types/inventree'
 
+import fc from 'fast-check'
+
 /** Flush all pending microtasks so fire-and-forget resolveEntry() completes */
 const flushPromises = () => new Promise<void>(resolve => setTimeout(resolve, 0))
 
@@ -52,6 +54,7 @@ function makeStockItem(overrides: Partial<StockItem> = {}): StockItem {
     location: null,
     serial: null,
     batch: null,
+    barcode_hash: '',
     notes: '',
     ...overrides
   }
@@ -229,7 +232,6 @@ describe('useStockTakingLog — addItem', () => {
   })
 })
 
-
 describe('useStockTakingLog — updateCount', () => {
   let mockService: ReturnType<typeof createMockInventreeService>
 
@@ -252,7 +254,7 @@ describe('useStockTakingLog — updateCount', () => {
     const entry = await addLoadedEntry(log)
 
     expect(log.updateCount(entry.id, 5)).toBe(true)
-    expect(log.logEntries.value[0].confirmedCount).toBe(5)
+    expect(log.logEntries.value[0]!.confirmedCount).toBe(5)
   })
 
   it('returns false for non-existent entry ID', () => {
@@ -265,7 +267,7 @@ describe('useStockTakingLog — updateCount', () => {
     const entry = await addLoadedEntry(log)
 
     expect(log.updateCount(entry.id, -1)).toBe(false)
-    expect(log.logEntries.value[0].confirmedCount).toBe(10)
+    expect(log.logEntries.value[0]!.confirmedCount).toBe(10)
   })
 
   it('rejects NaN', async () => {
@@ -273,7 +275,7 @@ describe('useStockTakingLog — updateCount', () => {
     const entry = await addLoadedEntry(log)
 
     expect(log.updateCount(entry.id, NaN)).toBe(false)
-    expect(log.logEntries.value[0].confirmedCount).toBe(10)
+    expect(log.logEntries.value[0]!.confirmedCount).toBe(10)
   })
 
   it('rejects Infinity', async () => {
@@ -281,7 +283,7 @@ describe('useStockTakingLog — updateCount', () => {
     const entry = await addLoadedEntry(log)
 
     expect(log.updateCount(entry.id, Infinity)).toBe(false)
-    expect(log.logEntries.value[0].confirmedCount).toBe(10)
+    expect(log.logEntries.value[0]!.confirmedCount).toBe(10)
   })
 
   it('accepts zero as a valid count', async () => {
@@ -289,7 +291,55 @@ describe('useStockTakingLog — updateCount', () => {
     const entry = await addLoadedEntry(log)
 
     expect(log.updateCount(entry.id, 0)).toBe(true)
-    expect(log.logEntries.value[0].confirmedCount).toBe(0)
+    expect(log.logEntries.value[0]!.confirmedCount).toBe(0)
+  })
+})
+
+describe('useStockTakingLog — updateLocation', () => {
+  let mockService: ReturnType<typeof createMockInventreeService>
+
+  beforeEach(() => {
+    mockService = createMockInventreeService()
+  })
+
+  async function addLoadedEntry(log: ReturnType<typeof useStockTakingLog>, barcode = 'BC-1', location: number | null = 7) {
+    const part = makePart()
+    const stockItem = makeStockItem({ pk: 100, quantity: 10, location })
+    mockService.scanBarcode.mockResolvedValue(part)
+    mockService.getStockItems.mockResolvedValue([stockItem])
+    const entry = log.addItem(barcode)
+    await flushPromises()
+    return entry!
+  }
+
+  it('populates systemLocation and confirmedLocation from the stock item', async () => {
+    const log = useStockTakingLog(mockService.service)
+    const entry = await addLoadedEntry(log, 'BC-1', 7)
+
+    expect(entry.systemLocation).toBe(7)
+    expect(entry.confirmedLocation).toBe(7)
+  })
+
+  it('updates confirmedLocation and returns true for a valid entry', async () => {
+    const log = useStockTakingLog(mockService.service)
+    const entry = await addLoadedEntry(log, 'BC-1', 7)
+
+    expect(log.updateLocation(entry.id, 12)).toBe(true)
+    expect(log.logEntries.value[0]!.confirmedLocation).toBe(12)
+    expect(log.logEntries.value[0]!.systemLocation).toBe(7)
+  })
+
+  it('accepts null (no location) as a valid value', async () => {
+    const log = useStockTakingLog(mockService.service)
+    const entry = await addLoadedEntry(log, 'BC-1', 7)
+
+    expect(log.updateLocation(entry.id, null)).toBe(true)
+    expect(log.logEntries.value[0]!.confirmedLocation).toBeNull()
+  })
+
+  it('returns false for a non-existent entry ID', () => {
+    const log = useStockTakingLog(mockService.service)
+    expect(log.updateLocation('non-existent-id', 5)).toBe(false)
   })
 })
 
@@ -347,7 +397,7 @@ describe('useStockTakingLog — removeEntry', () => {
 
     log.removeEntry(entry1.id)
     expect(log.logEntries.value).toHaveLength(1)
-    expect(log.logEntries.value[0].id).toBe(entry2.id)
+    expect(log.logEntries.value[0]!.id).toBe(entry2.id)
   })
 })
 
@@ -381,7 +431,7 @@ describe('useStockTakingLog — removeLastEntry', () => {
     const removed = log.removeLastEntry()
     expect(removed!.id).toBe(entry2.id)
     expect(log.logEntries.value).toHaveLength(1)
-    expect(log.logEntries.value[0].barcode).toBe('BC-1')
+    expect(log.logEntries.value[0]!.barcode).toBe('BC-1')
   })
 
   it('decreases log length by exactly one', async () => {
@@ -445,7 +495,6 @@ describe('useStockTakingLog — clearLog', () => {
     expect(log.getEntryOrder()).toHaveLength(0)
   })
 })
-
 
 describe('useStockTakingLog — localStorage persistence', () => {
   const STORAGE_KEY = 'stock-taking-log'
@@ -526,11 +575,11 @@ describe('useStockTakingLog — localStorage persistence', () => {
 
     log2.loadFromStorage()
     expect(log2.logEntries.value).toHaveLength(1)
-    expect(log2.logEntries.value[0].barcode).toBe('BC-1')
-    expect(log2.logEntries.value[0].id).toBe(entry.id)
-    expect(log2.logEntries.value[0].confirmedCount).toBe(entry.confirmedCount)
-    expect(log2.logEntries.value[0].systemCount).toBe(entry.systemCount)
-    expect(log2.logEntries.value[0].stockItemPk).toBe(entry.stockItemPk)
+    expect(log2.logEntries.value[0]!.barcode).toBe('BC-1')
+    expect(log2.logEntries.value[0]!.id).toBe(entry.id)
+    expect(log2.logEntries.value[0]!.confirmedCount).toBe(entry.confirmedCount)
+    expect(log2.logEntries.value[0]!.systemCount).toBe(entry.systemCount)
+    expect(log2.logEntries.value[0]!.stockItemPk).toBe(entry.stockItemPk)
   })
 
   it('loadFromStorage rebuilds barcodeIndex', async () => {
@@ -611,7 +660,7 @@ describe('useStockTakingLog — localStorage persistence', () => {
     const log2 = useStockTakingLog(mockService.service)
     log2.loadFromStorage()
 
-    const restored = log2.logEntries.value[0]
+    const restored = log2.logEntries.value[0]!
     expect(restored.id).toBe(entry.id)
     expect(restored.barcode).toBe('ROUND-TRIP')
     expect(restored.part).toEqual(entry.part)
@@ -622,7 +671,6 @@ describe('useStockTakingLog — localStorage persistence', () => {
     expect(restored.addedAt).toBe(entry.addedAt)
   })
 })
-
 
 describe('useStockTakingLog — applyStockTake', () => {
   let mockService: ReturnType<typeof createMockInventreeService>
@@ -637,10 +685,11 @@ describe('useStockTakingLog — applyStockTake', () => {
     barcode: string,
     quantity = 10,
     partPk = Math.random() * 1000 | 0,
-    stockItemPk = Math.random() * 1000 | 0
+    stockItemPk = Math.random() * 1000 | 0,
+    location: number | null = null
   ) {
     const part = makePart({ pk: partPk, name: `Part-${partPk}` })
-    const stockItem = makeStockItem({ pk: stockItemPk, quantity })
+    const stockItem = makeStockItem({ pk: stockItemPk, quantity, location })
     mockService.scanBarcode.mockResolvedValueOnce(part)
     mockService.getStockItems.mockResolvedValueOnce([stockItem])
     const entry = log.addItem(barcode)
@@ -700,7 +749,8 @@ describe('useStockTakingLog — applyStockTake', () => {
 
     const entry1 = await addLoadedEntry(log, 'ADD-ITEM', 10, 1, 101)
     const entry2 = await addLoadedEntry(log, 'REMOVE-ITEM', 20, 2, 102)
-    const entry3 = await addLoadedEntry(log, 'SKIP-ITEM', 5, 3, 103)
+    // entry3 (SKIP-ITEM) is added but left unmodified to exercise the delta-0 skip path
+    await addLoadedEntry(log, 'SKIP-ITEM', 5, 3, 103)
 
     // entry1: system=10, set confirmed=15 → delta +5 (add)
     log.updateCount(entry1.id, 15)
@@ -762,10 +812,10 @@ describe('useStockTakingLog — applyStockTake', () => {
     expect(result.success).toBe(false)
     expect(result.processedItems).toBe(1)
     expect(result.failedItems).toHaveLength(1)
-    expect(result.failedItems[0].barcode).toBe('FAIL-ITEM')
+    expect(result.failedItems[0]!.barcode).toBe('FAIL-ITEM')
     expect(log.logEntries.value).toHaveLength(1)
-    expect(log.logEntries.value[0].barcode).toBe('FAIL-ITEM')
-    expect(log.logEntries.value[0].status).toBe('error')
+    expect(log.logEntries.value[0]!.barcode).toBe('FAIL-ITEM')
+    expect(log.logEntries.value[0]!.status).toBe('error')
   })
 
   it('sets isSubmitting during execution', async () => {
@@ -784,18 +834,69 @@ describe('useStockTakingLog — applyStockTake', () => {
     expect(capturedIsSubmitting).toBe(true)
     expect(log.isSubmitting.value).toBe(false)
   })
+
+  it('transfers stock when only the location changed (count unchanged)', async () => {
+    const adjustStock = vi.spyOn(mockService.service, 'adjustStock').mockResolvedValue(undefined)
+    const transferStock = vi.spyOn(mockService.service, 'transferStock').mockResolvedValue(undefined)
+    const log = useStockTakingLog(mockService.service)
+
+    const entry = await addLoadedEntry(log, 'BC-1', 10, 1, 101, 5)
+    log.updateLocation(entry.id, 9)
+
+    const result = await log.applyStockTake()
+
+    expect(result.success).toBe(true)
+    expect(result.processedItems).toBe(1)
+    expect(result.skippedItems).toBe(0)
+    expect(adjustStock).not.toHaveBeenCalled()
+    expect(transferStock).toHaveBeenCalledTimes(1)
+    expect(transferStock).toHaveBeenCalledWith(101, 9, 'Stock take location adjustment via webapp')
+  })
+
+  it('adjusts stock and transfers location when both changed', async () => {
+    const adjustStock = vi.spyOn(mockService.service, 'adjustStock').mockResolvedValue(undefined)
+    const transferStock = vi.spyOn(mockService.service, 'transferStock').mockResolvedValue(undefined)
+    const log = useStockTakingLog(mockService.service)
+
+    const entry = await addLoadedEntry(log, 'BC-1', 10, 1, 101, 5)
+    log.updateCount(entry.id, 15)
+    log.updateLocation(entry.id, 9)
+
+    const result = await log.applyStockTake()
+
+    expect(result.success).toBe(true)
+    expect(result.processedItems).toBe(1)
+    expect(adjustStock).toHaveBeenCalledWith({
+      stockItemPk: 101,
+      currentQuantity: 10,
+      newQuantity: 15,
+      notes: 'Stock take adjustment via webapp'
+    })
+    expect(transferStock).toHaveBeenCalledWith(101, 9, 'Stock take location adjustment via webapp')
+  })
+
+  it('skips entries where neither count nor location changed', async () => {
+    const adjustStock = vi.spyOn(mockService.service, 'adjustStock').mockResolvedValue(undefined)
+    const transferStock = vi.spyOn(mockService.service, 'transferStock').mockResolvedValue(undefined)
+    const log = useStockTakingLog(mockService.service)
+
+    await addLoadedEntry(log, 'BC-1', 10, 1, 101, 5)
+
+    const result = await log.applyStockTake()
+
+    expect(result.success).toBe(true)
+    expect(result.skippedItems).toBe(1)
+    expect(result.processedItems).toBe(0)
+    expect(adjustStock).not.toHaveBeenCalled()
+    expect(transferStock).not.toHaveBeenCalled()
+  })
 })
-
-
-import fc from 'fast-check'
 
 // ---------------------------------------------------------------------------
 // Property-based tests for useStockTakingLog composable
 // ---------------------------------------------------------------------------
 
 describe('useStockTakingLog — property tests', () => {
-  const STORAGE_KEY = 'stock-taking-log'
-
   beforeEach(() => {
     localStorage.clear()
   })
@@ -820,9 +921,9 @@ describe('useStockTakingLog — property tests', () => {
   it('Property 1 — new entries have confirmedCount === systemCount, valid stockItemPk, correct part', async () => {
     await fc.assert(
       fc.asyncProperty(
-        fc.nat({ max: 10000 }),       // partPk
-        fc.nat({ max: 10000 }),       // stockItemPk
-        fc.nat({ max: 100000 }),      // quantity
+        fc.nat({ max: 10000 }), // partPk
+        fc.nat({ max: 10000 }), // stockItemPk
+        fc.nat({ max: 100000 }), // quantity
         fc.string({ minLength: 1, maxLength: 20 }).filter(s => s.trim().length > 0), // barcode (exclude whitespace-only)
         async (partPk, stockItemPk, quantity, barcode) => {
           const { mock, part } = setupMockForLoaded(partPk, stockItemPk, quantity)
@@ -889,7 +990,7 @@ describe('useStockTakingLog — property tests', () => {
 
           const result = log.updateCount(entry!.id, newCount)
           expect(result).toBe(true)
-          expect(log.logEntries.value[0].confirmedCount).toBe(newCount)
+          expect(log.logEntries.value[0]!.confirmedCount).toBe(newCount)
         }
       ),
       { numRuns: 100 }
@@ -921,7 +1022,7 @@ describe('useStockTakingLog — property tests', () => {
           if (entries.length === 0) return // skip if all were empty strings
 
           const lengthBefore = log.logEntries.value.length
-          const lastEntry = entries[entries.length - 1]
+          const lastEntry = entries[entries.length - 1]!
 
           const removed = log.removeLastEntry()
 
@@ -956,7 +1057,7 @@ describe('useStockTakingLog — property tests', () => {
 
           // Deduplicate barcodes
           const seen = new Set<string>()
-          const uniqueItems = items.filter(i => {
+          const uniqueItems = items.filter((i) => {
             if (seen.has(i.barcode)) return false
             seen.add(i.barcode)
             return true
@@ -994,8 +1095,8 @@ describe('useStockTakingLog — property tests', () => {
           expect(log2.logEntries.value.length).toBe(originalEntries.length)
 
           for (let i = 0; i < originalEntries.length; i++) {
-            const orig = originalEntries[i]
-            const restored = log2.logEntries.value[i]
+            const orig = originalEntries[i]!
+            const restored = log2.logEntries.value[i]!
             expect(restored.id).toBe(orig.id)
             expect(restored.barcode).toBe(orig.barcode)
             expect(restored.part).toEqual(orig.part)
@@ -1030,7 +1131,7 @@ describe('useStockTakingLog — property tests', () => {
 
           // Deduplicate barcodes
           const seen = new Set<string>()
-          const uniqueItems = items.filter(i => {
+          const uniqueItems = items.filter((i) => {
             if (seen.has(i.barcode)) return false
             seen.add(i.barcode)
             return true

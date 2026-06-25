@@ -15,7 +15,7 @@ const users: AppUser[] = [
 
 const STORAGE_KEY = 'xts-current-user'
 
-const currentUser = ref<AppUser>(users[0])
+const currentUser = ref<AppUser>(users[0]!)
 
 export const useCurrentUser = () => {
   const loadUser = () => {

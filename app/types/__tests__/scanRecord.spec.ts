@@ -31,12 +31,12 @@ const barcodeArb = fc.string({ minLength: 1, maxLength: 50 })
 
 const barcodeTypeArb = fc.constantFrom(
   '1D - EAN-13', '1D - EAN-8', '1D - UPC-A', '1D - Code 128',
-  '2D - QR Code', '2D - Data Matrix',
+  '2D - QR Code', '2D - Data Matrix'
 )
 
 const timestampArb = fc.date({
   min: new Date('2020-01-01T00:00:00.000Z'),
-  max: new Date('2030-12-31T23:59:59.999Z'),
+  max: new Date('2030-12-31T23:59:59.999Z')
 }).filter(d => !isNaN(d.getTime()))
 
 const partArb: fc.Arbitrary<Part> = fc.record({
@@ -56,7 +56,7 @@ const partArb: fc.Arbitrary<Part> = fc.record({
   in_stock: fc.integer({ min: 0, max: 10000 }),
   link: fc.string({ maxLength: 200 }),
   image: fc.option(fc.string({ minLength: 1, maxLength: 200 }), { nil: null }),
-  thumbnail: fc.option(fc.string({ minLength: 1, maxLength: 200 }), { nil: null }),
+  thumbnail: fc.option(fc.string({ minLength: 1, maxLength: 200 }), { nil: null })
 })
 
 const errorMessageArb = fc.string({ minLength: 1, maxLength: 100 })
@@ -69,7 +69,7 @@ const foundRecordArb: fc.Arbitrary<ScanRecord> = fc.record({
   timestamp: timestampArb,
   lookupStatus: fc.constant('found' as const),
   part: partArb,
-  errorMessage: fc.constant(undefined),
+  errorMessage: fc.constant(undefined)
 })
 
 const notFoundRecordArb: fc.Arbitrary<ScanRecord> = fc.record({
@@ -78,7 +78,7 @@ const notFoundRecordArb: fc.Arbitrary<ScanRecord> = fc.record({
   timestamp: timestampArb,
   lookupStatus: fc.constant('not_found' as const),
   part: fc.constant(undefined),
-  errorMessage: fc.constant(undefined),
+  errorMessage: fc.constant(undefined)
 })
 
 const errorRecordArb: fc.Arbitrary<ScanRecord> = fc.record({
@@ -87,13 +87,13 @@ const errorRecordArb: fc.Arbitrary<ScanRecord> = fc.record({
   timestamp: timestampArb,
   lookupStatus: fc.constant('error' as const),
   part: fc.constant(undefined),
-  errorMessage: errorMessageArb,
+  errorMessage: errorMessageArb
 })
 
 const scanRecordArb: fc.Arbitrary<ScanRecord> = fc.oneof(
   foundRecordArb,
   notFoundRecordArb,
-  errorRecordArb,
+  errorRecordArb
 )
 
 const scanHistoryArb = fc.array(scanRecordArb, { minLength: 0, maxLength: 20 })
@@ -110,7 +110,7 @@ function roundTrip(history: ScanRecord[]): ScanRecord[] {
   return parsed.map((item: any) => ({
     ...item,
     timestamp: new Date(item.timestamp),
-    lookupStatus: item.lookupStatus || 'not_found',
+    lookupStatus: item.lookupStatus || 'not_found'
   }))
 }
 
@@ -126,8 +126,8 @@ describe('ScanRecord localStorage round-trip', () => {
           expect(restored).toHaveLength(history.length)
 
           for (let i = 0; i < history.length; i++) {
-            const original = history[i]
-            const result = restored[i]
+            const original = history[i]!
+            const result = restored[i]!
 
             // Core identity fields
             expect(result.barcode).toBe(original.barcode)
@@ -147,9 +147,9 @@ describe('ScanRecord localStorage round-trip', () => {
               expect(result.part).toBeUndefined()
             }
           }
-        },
+        }
       ),
-      { numRuns: 100 },
+      { numRuns: 100 }
     )
   })
 })

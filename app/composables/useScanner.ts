@@ -6,7 +6,7 @@ import { FORMAT_LABELS } from '~/types/scanner'
 /** All supported formats as default when none specified */
 const ALL_FORMATS: BarcodeFormat[] = [
   'ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128',
-  'qr_code', 'data_matrix', 'pdf417', 'aztec',
+  'qr_code', 'data_matrix', 'pdf417', 'aztec'
 ]
 
 /** Map our internal format names to zxing-wasm format names */
@@ -19,18 +19,18 @@ const ZXING_FORMAT_MAP: Record<BarcodeFormat, string> = {
   qr_code: 'QRCode',
   data_matrix: 'DataMatrix',
   pdf417: 'PDF417',
-  aztec: 'Aztec',
+  aztec: 'Aztec'
 }
 
 /** Reverse map from zxing-wasm format names back to our internal format */
 const ZXING_FORMAT_REVERSE: Record<string, BarcodeFormat> = Object.fromEntries(
-  Object.entries(ZXING_FORMAT_MAP).map(([k, v]) => [v, k as BarcodeFormat]),
+  Object.entries(ZXING_FORMAT_MAP).map(([k, v]) => [v, k as BarcodeFormat])
 ) as Record<string, BarcodeFormat>
 
 /** Reverse map from native BarcodeDetector format names to our internal format.
  *  Native API uses the same names as our internal format. */
 const NATIVE_FORMAT_REVERSE: Record<string, BarcodeFormat> = Object.fromEntries(
-  ALL_FORMATS.map(f => [f, f]),
+  ALL_FORMATS.map(f => [f, f])
 ) as Record<string, BarcodeFormat>
 
 export const useScanner = (options: UseScannerOptions = {}): UseScanner => {
@@ -67,7 +67,7 @@ export const useScanner = (options: UseScannerOptions = {}): UseScanner => {
       value,
       type: FORMAT_LABELS[internalFormat],
       rawFormat,
-      boundingBox,
+      boundingBox
     }
     lastResult.value = result
     options.onDetected?.(result)
@@ -91,11 +91,10 @@ export const useScanner = (options: UseScannerOptions = {}): UseScanner => {
           barcode.rawValue,
           barcode.format,
           internalFormat,
-          bb ? { x: bb.x, y: bb.y, width: bb.width, height: bb.height } : undefined,
+          bb ? { x: bb.x, y: bb.y, width: bb.width, height: bb.height } : undefined
         )
       }
-    }
-    catch {
+    } catch {
       // Silently skip frame on transient detection errors
     }
   }
@@ -123,11 +122,10 @@ export const useScanner = (options: UseScannerOptions = {}): UseScanner => {
           result.text,
           result.format,
           internalFormat,
-          { x: minX, y: minY, width: Math.max(...xs) - minX, height: Math.max(...ys) - minY },
+          { x: minX, y: minY, width: Math.max(...xs) - minX, height: Math.max(...ys) - minY }
         )
       }
-    }
-    catch {
+    } catch {
       // Silently skip frame on transient detection errors
     }
   }
@@ -148,8 +146,7 @@ export const useScanner = (options: UseScannerOptions = {}): UseScanner => {
           nativeDetector = new BarcodeDetector({ formats })
           useNative = true
         }
-      }
-      catch {
+      } catch {
         // Fall through to zxing-wasm
       }
     }
@@ -165,7 +162,7 @@ export const useScanner = (options: UseScannerOptions = {}): UseScanner => {
       zxingReaderOptions = {
         formats: formats.map(f => ZXING_FORMAT_MAP[f]),
         tryHarder: true,
-        maxNumberOfSymbols: 1,
+        maxNumberOfSymbols: 1
       }
     }
 
@@ -174,8 +171,7 @@ export const useScanner = (options: UseScannerOptions = {}): UseScanner => {
 
       if (useNative && nativeDetector) {
         await detectWithNative(nativeDetector, videoRef.value)
-      }
-      else if (canvas && ctx) {
+      } else if (canvas && ctx) {
         await detectWithZxing(videoRef.value, canvas, ctx, zxingReaderOptions)
       }
 
@@ -219,7 +215,7 @@ export const useScanner = (options: UseScannerOptions = {}): UseScanner => {
     const constraints: MediaStreamConstraints = {
       video: resolvedDeviceId
         ? { deviceId: { exact: resolvedDeviceId } }
-        : { facingMode: 'environment' },
+        : { facingMode: 'environment' }
     }
 
     try {
@@ -257,16 +253,13 @@ export const useScanner = (options: UseScannerOptions = {}): UseScanner => {
 
       // Start barcode detection loop
       startDetectionLoop()
-    }
-    catch (err: unknown) {
+    } catch (err: unknown) {
       const domError = err as DOMException
       if (domError.name === 'NotAllowedError') {
         error.value = 'Camera permission denied. Please allow camera access to scan barcodes.'
-      }
-      else if (domError.name === 'NotFoundError') {
+      } else if (domError.name === 'NotFoundError') {
         error.value = 'No camera detected. Please connect a camera device.'
-      }
-      else {
+      } else {
         error.value = domError.message || 'An unknown camera error occurred.'
       }
     }
@@ -288,6 +281,6 @@ export const useScanner = (options: UseScannerOptions = {}): UseScanner => {
     startCamera,
     stopCamera,
     switchCamera,
-    videoRef,
+    videoRef
   }
 }

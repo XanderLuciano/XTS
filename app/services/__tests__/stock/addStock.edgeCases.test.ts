@@ -20,7 +20,7 @@ describe('addStock - Edge Cases', () => {
 
     // Mock getStockItems to return an array with undefined first element
     // This is a defensive check that should never happen in practice
-    mockApi.mockImplementation(async (url: string, options?: any) => {
+    mockApi.mockImplementation(async (url: string, _options?: any) => {
       if (url.startsWith('/stock/?part=') && url.includes('in_stock=true')) {
         // Return array with length > 0 but first element is undefined
         // This simulates a corrupted/malformed API response
@@ -28,7 +28,7 @@ describe('addStock - Edge Cases', () => {
         corruptedArray.length = 1
         return corruptedArray
       }
-      
+
       throw new Error(`Unexpected API call: ${url}`)
     })
 

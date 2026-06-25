@@ -26,14 +26,14 @@ describe('API Response Format Consistency', () => {
           mockApi1.mockResolvedValue(mockParts)
           const result1 = await service1.searchParts(queryParam)
           expect(result1).toBe(mockParts)
-          
+
           // Test getPartByIPN
           const mockApi2 = vi.fn()
           const service2 = new InventreeService(mockApi2)
           mockApi2.mockResolvedValue(mockParts)
           const result2 = await service2.getPartByIPN(queryParam)
           expect(result2).toBe(mockParts)
-          
+
           // Test getPartByName
           const mockApi3 = vi.fn()
           const service3 = new InventreeService(mockApi3)
@@ -58,14 +58,14 @@ describe('API Response Format Consistency', () => {
           mockApi1.mockResolvedValue(mockResponse)
           const result1 = await service1.searchParts(queryParam)
           expect(result1).toEqual(mockResponse.results)
-          
+
           // Test getPartByIPN
           const mockApi2 = vi.fn()
           const service2 = new InventreeService(mockApi2)
           mockApi2.mockResolvedValue(mockResponse)
           const result2 = await service2.getPartByIPN(queryParam)
           expect(result2).toEqual(mockResponse.results)
-          
+
           // Test getPartByName
           const mockApi3 = vi.fn()
           const service3 = new InventreeService(mockApi3)
@@ -90,14 +90,14 @@ describe('API Response Format Consistency', () => {
           mockApi1.mockResolvedValue(mockResponse)
           const result1 = await service1.searchParts(queryParam)
           expect(result1).toEqual([])
-          
+
           // Test getPartByIPN
           const mockApi2 = vi.fn()
           const service2 = new InventreeService(mockApi2)
           mockApi2.mockResolvedValue(mockResponse)
           const result2 = await service2.getPartByIPN(queryParam)
           expect(result2).toEqual([])
-          
+
           // Test getPartByName
           const mockApi3 = vi.fn()
           const service3 = new InventreeService(mockApi3)

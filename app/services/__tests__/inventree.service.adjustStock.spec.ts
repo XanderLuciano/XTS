@@ -96,7 +96,6 @@ describe('adjustStock — property tests', () => {
   })
 })
 
-
 /**
  * Unit tests for InventreeService.adjustStock edge cases
  * **Validates: Requirements 9.5**

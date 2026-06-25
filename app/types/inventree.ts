@@ -78,6 +78,8 @@ export interface StockTakeEntry {
   stockItemPk: number
   systemCount: number
   confirmedCount: number
+  systemLocation: number | null
+  confirmedLocation: number | null
   status: 'loading' | 'loaded' | 'error'
   errorMessage?: string
   addedAt: number

@@ -1,6 +1,7 @@
 import { ref, computed, type Ref, type ComputedRef } from 'vue'
 import type { StockTakeEntry, StockTakeResult, Part, PersistedStockTakeLog } from '~/types/inventree'
-import { InventreeService } from '~/services/inventree.service'
+import type { InventreeService } from '~/services/inventree.service'
+import { extractApiError } from '~/utils/apiError'
 
 /**
  * Interface for the stock taking log composable
@@ -14,6 +15,7 @@ export interface UseStockTakingLog {
   // Actions
   addItem: (barcode: string) => StockTakeEntry | null
   updateCount: (entryId: string, newCount: number) => boolean
+  updateLocation: (entryId: string, newLocation: number | null) => boolean
   removeEntry: (entryId: string) => StockTakeEntry | null
   removeLastEntry: () => StockTakeEntry | null
   clearLog: () => void
@@ -131,6 +133,8 @@ export const useStockTakingLog = (inventreeService?: InventreeService): UseStock
       stockItemPk: 0,
       systemCount: 0,
       confirmedCount: 0,
+      systemLocation: null,
+      confirmedLocation: null,
       status: 'loading',
       addedAt: Date.now()
     }
@@ -158,7 +162,7 @@ export const useStockTakingLog = (inventreeService?: InventreeService): UseStock
         part = await inventreeService.scanBarcode(entry.barcode)
       } else {
         const parts = await inventreeService.searchParts(entry.barcode)
-        part = parts.length > 0 ? parts[0] : null
+        part = parts.length > 0 ? parts[0]! : null
       }
 
       // Find the entry in the log (may have been removed while resolving)
@@ -190,19 +194,21 @@ export const useStockTakingLog = (inventreeService?: InventreeService): UseStock
         return
       }
 
-      const firstStockItem = stockItems[0]
+      const firstStockItem = stockItems[0]!
       stillExists.part = part
       stillExists.stockItemPk = firstStockItem.pk
       stillExists.systemCount = firstStockItem.quantity
       stillExists.confirmedCount = firstStockItem.quantity
+      stillExists.systemLocation = firstStockItem.location
+      stillExists.confirmedLocation = firstStockItem.location
       stillExists.status = 'loaded'
       logEntries.value = [...logEntries.value]
       saveToStorage()
-    } catch (error: any) {
+    } catch (error: unknown) {
       const current = logEntries.value.find(e => e.id === entry.id)
       if (!current) return
       current.status = 'error'
-      current.errorMessage = error?.message || String(error)
+      current.errorMessage = extractApiError(error, String(error))
       logEntries.value = [...logEntries.value]
       saveToStorage()
     }
@@ -217,10 +223,19 @@ export const useStockTakingLog = (inventreeService?: InventreeService): UseStock
     return true
   }
 
+  const updateLocation = (entryId: string, newLocation: number | null): boolean => {
+    const entry = logEntries.value.find(e => e.id === entryId)
+    if (!entry) return false
+    entry.confirmedLocation = newLocation
+    saveToStorage()
+    return true
+  }
+
   const removeEntry = (entryId: string): StockTakeEntry | null => {
     const index = logEntries.value.findIndex(e => e.id === entryId)
     if (index === -1) return null
     const [removed] = logEntries.value.splice(index, 1)
+    if (!removed) return null
     barcodeIndex.delete(removed.barcode)
     const orderIndex = entryOrder.indexOf(entryId)
     if (orderIndex !== -1) entryOrder.splice(orderIndex, 1)
@@ -231,6 +246,7 @@ export const useStockTakingLog = (inventreeService?: InventreeService): UseStock
   const removeLastEntry = (): StockTakeEntry | null => {
     if (entryOrder.length === 0) return null
     const lastId = entryOrder[entryOrder.length - 1]
+    if (lastId === undefined) return null
     return removeEntry(lastId)
   }
 
@@ -244,99 +260,108 @@ export const useStockTakingLog = (inventreeService?: InventreeService): UseStock
   }
 
   const applyStockTake = async (): Promise<StockTakeResult> => {
-      // Early return if log is empty
-      if (logEntries.value.length === 0) {
-        return {
-          success: false,
-          processedItems: 0,
-          skippedItems: 0,
-          failedItems: [],
-          message: 'Log is empty'
-        }
+    // Early return if log is empty
+    if (logEntries.value.length === 0) {
+      return {
+        success: false,
+        processedItems: 0,
+        skippedItems: 0,
+        failedItems: [],
+        message: 'Log is empty'
       }
+    }
 
-      // Early return if log has error or loading entries
-      const errorEntries = logEntries.value.filter(e => e.status === 'error')
-      const loadingEntries = logEntries.value.filter(e => e.status === 'loading')
-      if (errorEntries.length > 0) {
-        return {
-          success: false,
-          processedItems: 0,
-          skippedItems: 0,
-          failedItems: [...errorEntries],
-          message: 'Cannot apply with error entries'
-        }
+    // Early return if log has error or loading entries
+    const errorEntries = logEntries.value.filter(e => e.status === 'error')
+    const loadingEntries = logEntries.value.filter(e => e.status === 'loading')
+    if (errorEntries.length > 0) {
+      return {
+        success: false,
+        processedItems: 0,
+        skippedItems: 0,
+        failedItems: [...errorEntries],
+        message: 'Cannot apply with error entries'
       }
-      if (loadingEntries.length > 0) {
-        return {
-          success: false,
-          processedItems: 0,
-          skippedItems: 0,
-          failedItems: [],
-          message: 'Wait for all items to finish loading'
-        }
+    }
+    if (loadingEntries.length > 0) {
+      return {
+        success: false,
+        processedItems: 0,
+        skippedItems: 0,
+        failedItems: [],
+        message: 'Wait for all items to finish loading'
       }
+    }
 
-      isSubmitting.value = true
-      let processedItems = 0
-      let skippedItems = 0
-      const failedItems: StockTakeEntry[] = []
-      const succeededIds: string[] = []
+    isSubmitting.value = true
+    let processedItems = 0
+    let skippedItems = 0
+    const failedItems: StockTakeEntry[] = []
+    const succeededIds: string[] = []
 
-      try {
-        for (const entry of logEntries.value) {
-          const delta = entry.confirmedCount - entry.systemCount
+    try {
+      for (const entry of logEntries.value) {
+        const delta = entry.confirmedCount - entry.systemCount
+        const locationChanged = entry.confirmedLocation !== entry.systemLocation
 
-          if (delta === 0) {
-            skippedItems++
-            succeededIds.push(entry.id)
-            continue
-          }
+        if (delta === 0 && !locationChanged) {
+          skippedItems++
+          succeededIds.push(entry.id)
+          continue
+        }
 
-          try {
+        try {
+          if (delta !== 0) {
             await inventreeService!.adjustStock({
               stockItemPk: entry.stockItemPk,
               currentQuantity: entry.systemCount,
               newQuantity: entry.confirmedCount,
               notes: 'Stock take adjustment via webapp'
             })
-            processedItems++
-            succeededIds.push(entry.id)
-          } catch (error: any) {
-            entry.status = 'error'
-            entry.errorMessage = error?.message || String(error)
-            failedItems.push(entry)
           }
-        }
-
-        if (failedItems.length === 0) {
-          clearLog()
-          return {
-            success: true,
-            processedItems,
-            skippedItems,
-            failedItems: [],
-            message: `Successfully processed ${processedItems} item(s), skipped ${skippedItems}`
+          if (locationChanged) {
+            await inventreeService!.transferStock(
+              entry.stockItemPk,
+              entry.confirmedLocation,
+              'Stock take location adjustment via webapp'
+            )
           }
+          processedItems++
+          succeededIds.push(entry.id)
+        } catch (error: unknown) {
+          entry.status = 'error'
+          entry.errorMessage = extractApiError(error, String(error))
+          failedItems.push(entry)
         }
+      }
 
-        // Partial failure: remove successful entries, keep failed ones
-        for (const id of succeededIds) {
-          removeEntry(id)
-        }
-
+      if (failedItems.length === 0) {
+        clearLog()
         return {
-          success: false,
+          success: true,
           processedItems,
           skippedItems,
-          failedItems: [...failedItems],
-          message: `Partial failure: ${processedItems} succeeded, ${failedItems.length} failed`
+          failedItems: [],
+          message: `Successfully processed ${processedItems} item(s), skipped ${skippedItems}`
         }
-      } finally {
-        isSubmitting.value = false
       }
-    }
 
+      // Partial failure: remove successful entries, keep failed ones
+      for (const id of succeededIds) {
+        removeEntry(id)
+      }
+
+      return {
+        success: false,
+        processedItems,
+        skippedItems,
+        failedItems: [...failedItems],
+        message: `Partial failure: ${processedItems} succeeded, ${failedItems.length} failed`
+      }
+    } finally {
+      isSubmitting.value = false
+    }
+  }
 
   const highlightEntry = (entryId: string): void => {
     highlightedEntryId.value = entryId
@@ -412,6 +437,7 @@ export const useStockTakingLog = (inventreeService?: InventreeService): UseStock
     // Actions
     addItem,
     updateCount,
+    updateLocation,
     removeEntry,
     removeLastEntry,
     clearLog,

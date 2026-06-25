@@ -21,14 +21,13 @@ describe('Scan Barcode Link - Property Tests', () => {
         expect(mockApi).toHaveBeenCalledOnce()
         expect(mockApi).toHaveBeenCalledWith('/barcode/link/', {
           method: 'POST',
-          body: { barcode, stockitem: pk },
+          body: { barcode, stockitem: pk }
         })
       }),
-      { numRuns: 100 },
+      { numRuns: 100 }
     )
   })
 })
-
 
 // Feature: barcode-link-stock, Property 6: currentBarcode captures the lookup barcode
 
@@ -61,7 +60,7 @@ describe('Scan Barcode Link - Property Tests - Property 6', () => {
         // The barcode is the exact string (not trimmed, not modified)
         expect(currentBarcode).toStrictEqual(barcode)
       }),
-      { numRuns: 100 },
+      { numRuns: 100 }
     )
   })
 })
@@ -97,13 +96,12 @@ describe('Scan Barcode Link - Unit Tests - Property 6', () => {
   })
 })
 
-
 // Feature: barcode-link-stock, Property 2: linkBarcode resets to checked on every modal open
 
 describe('Scan Barcode Link - Property Tests - Property 2', () => {
   const sessionArb = fc.array(
     fc.record({ toggled: fc.boolean() }),
-    { minLength: 1, maxLength: 10 },
+    { minLength: 1, maxLength: 10 }
   )
 
   // Feature: barcode-link-stock, Property 2: linkBarcode resets to checked on every modal open
@@ -127,7 +125,7 @@ describe('Scan Barcode Link - Property Tests - Property 2', () => {
           // Modal closes (submit or cancel) — state is now potentially "dirty"
         }
       }),
-      { numRuns: 100 },
+      { numRuns: 100 }
     )
   })
 })
@@ -163,7 +161,6 @@ describe('Scan Barcode Link - Unit Tests - Property 2', () => {
   })
 })
 
-
 // Feature: barcode-link-stock, Property 1: Link checkbox visibility matches createStock state
 
 describe('Scan Barcode Link - Property Tests - Property 1', () => {
@@ -191,7 +188,7 @@ describe('Scan Barcode Link - Property Tests - Property 1', () => {
         const finalVisibility = createStock
         expect(finalVisibility).toBe(createStock)
       }),
-      { numRuns: 100 },
+      { numRuns: 100 }
     )
   })
 })
@@ -216,7 +213,6 @@ describe('Scan Barcode Link - Unit Tests - Property 1', () => {
   })
 })
 
-
 // Feature: barcode-link-stock, Property 7: Checkbox description displays the barcode value
 
 describe('Scan Barcode Link - Property Tests - Property 7', () => {
@@ -237,7 +233,7 @@ describe('Scan Barcode Link - Property Tests - Property 7', () => {
         // Property: the rendered description contains the barcode string
         expect(renderedDescription).toContain(barcode)
       }),
-      { numRuns: 100 },
+      { numRuns: 100 }
     )
   })
 })
@@ -262,7 +258,6 @@ describe('Scan Barcode Link - Unit Tests - Property 7', () => {
     expect(content).toContain('Link Barcode to Stock Item')
   })
 })
-
 
 // Feature: barcode-link-stock, Property 3: Barcode link API called if and only if all preconditions met
 
@@ -304,9 +299,9 @@ describe('Scan Barcode Link - Property Tests - Property 3', () => {
           // Property: linkBarcode is called if and only if all three conditions hold
           const expectedCall = createStockChecked && linkBarcodeChecked && stockSucceeded
           expect(linkBarcodeCalled).toBe(expectedCall)
-        },
+        }
       ),
-      { numRuns: 100 },
+      { numRuns: 100 }
     )
   })
 })
@@ -324,7 +319,7 @@ describe('Scan Barcode Link - Unit Tests - Property 3', () => {
     const createPartFnMatch = content.match(/const createPart = async \(\) => \{([\s\S]*?)\n\}\n/)
     expect(createPartFnMatch).toBeTruthy()
 
-    const createPartBody = createPartFnMatch![1]
+    const createPartBody = createPartFnMatch![1]!
 
     // The guard condition must exist: if (stockItem && linkBarcode.value && currentBarcode.value)
     expect(createPartBody).toContain('if (stockItem && linkBarcode.value && currentBarcode.value)')
@@ -349,7 +344,6 @@ describe('Scan Barcode Link - Unit Tests - Property 3', () => {
   })
 })
 
-
 // Feature: barcode-link-stock, Property 4: Successful barcode link shows success toast with barcode value
 
 describe('Scan Barcode Link - Property Tests - Property 4', () => {
@@ -360,9 +354,9 @@ describe('Scan Barcode Link - Property Tests - Property 4', () => {
   // **Validates: Requirements 2.2**
   it('Property 4: Successful barcode link shows success toast with barcode value', () => {
     fc.assert(
-      fc.property(barcodeArb, stockItemPkArb, (barcode, stockItemPk) => {
+      fc.property(barcodeArb, stockItemPkArb, (barcode, _stockItemPk) => {
         // Track toast calls
-        const toastCalls: Array<{ title: string; description?: string; color: string }> = []
+        const toastCalls: Array<{ title: string, description?: string, color: string }> = []
 
         // Simulate the successful barcode link flow from scan.vue:
         // After part + stock creation succeed, linkBarcode API is called and succeeds.
@@ -379,7 +373,7 @@ describe('Scan Barcode Link - Property Tests - Property 4', () => {
         toastCalls.push({
           title: 'Barcode linked to stock item',
           description: `Barcode: ${currentBarcode}`,
-          color: 'success',
+          color: 'success'
         })
 
         // Property assertions:
@@ -387,16 +381,16 @@ describe('Scan Barcode Link - Property Tests - Property 4', () => {
         expect(toastCalls).toHaveLength(1)
 
         // The toast has the correct title
-        expect(toastCalls[0].title).toBe('Barcode linked to stock item')
+        expect(toastCalls[0]!.title).toBe('Barcode linked to stock item')
 
         // The toast description contains the barcode value
-        expect(toastCalls[0].description).toContain(barcode)
-        expect(toastCalls[0].description).toBe(`Barcode: ${barcode}`)
+        expect(toastCalls[0]!.description).toContain(barcode)
+        expect(toastCalls[0]!.description).toBe(`Barcode: ${barcode}`)
 
         // The toast color is 'success'
-        expect(toastCalls[0].color).toBe('success')
+        expect(toastCalls[0]!.color).toBe('success')
       }),
-      { numRuns: 100 },
+      { numRuns: 100 }
     )
   })
 })
@@ -411,7 +405,7 @@ describe('Scan Barcode Link - Unit Tests - Property 4', () => {
     const content = fs.readFileSync(path.resolve(__dirname, '../scan.vue'), 'utf-8')
 
     // The toast title must be 'Barcode linked to stock item'
-    expect(content).toContain("title: 'Barcode linked to stock item'")
+    expect(content).toContain('title: \'Barcode linked to stock item\'')
 
     // The toast description must contain currentBarcode.value via template literal
     // In scan.vue: description: `Barcode: ${currentBarcode.value}`
@@ -420,7 +414,7 @@ describe('Scan Barcode Link - Unit Tests - Property 4', () => {
     // The toast color must be 'success'
     // Verify the success toast block has color: 'success' near the barcode link title
     const linkToastMatch = content.match(
-      /title:\s*'Barcode linked to stock item'[\s\S]*?color:\s*'success'/,
+      /title:\s*'Barcode linked to stock item'[\s\S]*?color:\s*'success'/
     )
     expect(linkToastMatch).toBeTruthy()
   })

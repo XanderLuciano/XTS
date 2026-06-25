@@ -42,15 +42,15 @@ describe('addStock - Return Value Consistency', () => {
             if (url.startsWith('/stock/?part=') && url.includes('in_stock=true')) {
               return existingStock
             }
-            
+
             if (url === '/stock/add/' && options?.method === 'POST') {
               return { success: true }
             }
-            
+
             if (url.startsWith('/stock/?pk=')) {
               return [expectedApiResponse]
             }
-            
+
             throw new Error(`Unexpected API call: ${url}`)
           })
 
@@ -98,11 +98,11 @@ describe('addStock - Return Value Consistency', () => {
             if (url.startsWith('/stock/?part=') && url.includes('in_stock=true')) {
               return []
             }
-            
+
             if (url === '/stock/' && options?.method === 'POST') {
               return expectedApiResponse
             }
-            
+
             throw new Error(`Unexpected API call: ${url}`)
           })
 
@@ -152,19 +152,19 @@ describe('addStock - Return Value Consistency', () => {
             if (url.startsWith('/stock/?part=') && url.includes('in_stock=true')) {
               return existingStock
             }
-            
+
             if (url === '/stock/add/' && options?.method === 'POST') {
               return { success: true }
             }
-            
+
             if (url.startsWith('/stock/?pk=')) {
               return [expectedApiResponse]
             }
-            
+
             if (url === '/stock/' && options?.method === 'POST') {
               return expectedApiResponse
             }
-            
+
             throw new Error(`Unexpected API call: ${url}`)
           })
 

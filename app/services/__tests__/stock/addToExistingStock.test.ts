@@ -24,12 +24,12 @@ describe('addToExistingStock', () => {
             if (url === '/stock/add/' && options?.method === 'POST') {
               return { success: true }
             }
-            
+
             // Handle fetch updated stock item - returns empty array (edge case)
             if (url.startsWith('/stock/?pk=')) {
               return []
             }
-            
+
             throw new Error(`Unexpected API call: ${url}`)
           })
 
@@ -77,12 +77,12 @@ describe('addToExistingStock', () => {
             if (url === '/stock/add/' && options?.method === 'POST') {
               return { success: true }
             }
-            
+
             // Handle fetch updated stock item
             if (url.startsWith('/stock/?pk=')) {
               return [updatedStockItem]
             }
-            
+
             throw new Error(`Unexpected API call: ${url}`)
           })
 
@@ -101,81 +101,80 @@ describe('addToExistingStock', () => {
   })
 })
 
+it('should handle paginated response when fetching updated stock item', async () => {
+  const mockApi = vi.fn()
+  const service = new InventreeService(mockApi)
 
-  it('should handle paginated response when fetching updated stock item', async () => {
-    const mockApi = vi.fn()
-    const service = new InventreeService(mockApi)
+  const stockItemId = 456
+  const updatedStockItem = {
+    pk: stockItemId,
+    part: 789,
+    quantity: 200,
+    location: null,
+    serial: null,
+    batch: null,
+    notes: 'Updated'
+  }
 
-    const stockItemId = 456
-    const updatedStockItem = {
-      pk: stockItemId,
-      part: 789,
-      quantity: 200,
-      location: null,
-      serial: null,
-      batch: null,
-      notes: 'Updated'
+  mockApi.mockImplementation(async (url: string, options?: any) => {
+    // Handle bulk add endpoint
+    if (url === '/stock/add/' && options?.method === 'POST') {
+      return { success: true }
     }
 
-    mockApi.mockImplementation(async (url: string, options?: any) => {
-      // Handle bulk add endpoint
-      if (url === '/stock/add/' && options?.method === 'POST') {
-        return { success: true }
+    // Handle fetch updated stock item - return paginated response
+    if (url.startsWith('/stock/?pk=')) {
+      return {
+        count: 1,
+        results: [updatedStockItem],
+        next: null,
+        previous: null
       }
-      
-      // Handle fetch updated stock item - return paginated response
-      if (url.startsWith('/stock/?pk=')) {
-        return {
-          count: 1,
-          results: [updatedStockItem],
-          next: null,
-          previous: null
-        }
-      }
-      
-      throw new Error(`Unexpected API call: ${url}`)
-    })
+    }
 
-    const result = await service.addToExistingStock(stockItemId, {
+    throw new Error(`Unexpected API call: ${url}`)
+  })
+
+  const result = await service.addToExistingStock(stockItemId, {
+    quantity: 50,
+    notes: 'Test'
+  })
+
+  // Verify the updated stock item is extracted from paginated response
+  expect(result).toEqual(updatedStockItem)
+})
+
+it('should return empty array fallback when response.results is null', async () => {
+  const mockApi = vi.fn()
+  const service = new InventreeService(mockApi)
+
+  const stockItemId = 789
+
+  mockApi.mockImplementation(async (url: string, options?: any) => {
+    // Handle bulk add endpoint
+    if (url === '/stock/add/' && options?.method === 'POST') {
+      return { success: true }
+    }
+
+    // Handle fetch updated stock item - return object with null results
+    if (url.startsWith('/stock/?pk=')) {
+      return { results: null }
+    }
+
+    throw new Error(`Unexpected API call: ${url}`)
+  })
+
+  let thrownError: Error | null = null
+  try {
+    await service.addToExistingStock(stockItemId, {
       quantity: 50,
       notes: 'Test'
     })
+  } catch (error) {
+    thrownError = error as Error
+  }
 
-    // Verify the updated stock item is extracted from paginated response
-    expect(result).toEqual(updatedStockItem)
-  })
-
-  it('should return empty array fallback when response.results is null', async () => {
-    const mockApi = vi.fn()
-    const service = new InventreeService(mockApi)
-
-    const stockItemId = 789
-
-    mockApi.mockImplementation(async (url: string, options?: any) => {
-      // Handle bulk add endpoint
-      if (url === '/stock/add/' && options?.method === 'POST') {
-        return { success: true }
-      }
-      
-      // Handle fetch updated stock item - return object with null results
-      if (url.startsWith('/stock/?pk=')) {
-        return { results: null }
-      }
-      
-      throw new Error(`Unexpected API call: ${url}`)
-    })
-
-    let thrownError: Error | null = null
-    try {
-      await service.addToExistingStock(stockItemId, {
-        quantity: 50,
-        notes: 'Test'
-      })
-    } catch (error) {
-      thrownError = error as Error
-    }
-
-    // Verify error is thrown when results is null (empty array fallback triggers error)
-    expect(thrownError).toBeDefined()
-    expect(thrownError!.message).toBe('Failed to retrieve updated stock item')
-  })
+  // Verify error is thrown when results is null (empty array fallback triggers error)
+  expect(thrownError).toBeDefined()
+  expect(thrownError!.message).toBe('Failed to retrieve updated stock item')
+})

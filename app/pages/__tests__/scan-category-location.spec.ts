@@ -21,7 +21,7 @@ describe('Scan Category/Location - Property Tests - Property 6', () => {
 
         expect(result).toEqual(items)
       }),
-      { numRuns: 100 },
+      { numRuns: 100 }
     )
   })
 
@@ -35,7 +35,7 @@ describe('Scan Category/Location - Property Tests - Property 6', () => {
 
         expect(result).toEqual(items)
       }),
-      { numRuns: 100 },
+      { numRuns: 100 }
     )
   })
 
@@ -49,7 +49,7 @@ describe('Scan Category/Location - Property Tests - Property 6', () => {
 
         expect(result).toEqual(items)
       }),
-      { numRuns: 100 },
+      { numRuns: 100 }
     )
   })
 
@@ -63,7 +63,7 @@ describe('Scan Category/Location - Property Tests - Property 6', () => {
 
         expect(result).toEqual(items)
       }),
-      { numRuns: 100 },
+      { numRuns: 100 }
     )
   })
 })
@@ -119,7 +119,7 @@ describe('Scan Category/Location - Property Tests - Property 4', () => {
       fc.property(uniqueCategoryListArb, fc.nat(), (categories, indexSeed) => {
         // Pick a category from the list
         const selectedIndex = indexSeed % categories.length
-        const selected = categories[selectedIndex]
+        const selected = categories[selectedIndex]!
 
         // Simulate saving to localStorage (watcher logic from scan.vue)
         const savedPk = String(selected.pk)
@@ -133,7 +133,7 @@ describe('Scan Category/Location - Property Tests - Property 4', () => {
         expect(match!.pk).toBe(selected.pk)
         expect(match!.name).toBe(selected.name)
       }),
-      { numRuns: 100 },
+      { numRuns: 100 }
     )
   })
 
@@ -150,7 +150,7 @@ describe('Scan Category/Location - Property Tests - Property 4', () => {
         // Property: no category matches since all valid pks are >= 1 and invalidPk <= 0
         expect(match).toBeNull()
       }),
-      { numRuns: 100 },
+      { numRuns: 100 }
     )
   })
 })
@@ -164,10 +164,10 @@ describe('Scan Category/Location - Unit Tests - Property 4', () => {
     const content = fs.readFileSync(path.resolve(__dirname, '../scan.vue'), 'utf-8')
 
     // The watcher must write to localStorage with key 'inventree_last_category'
-    expect(content).toContain("localStorage.setItem('inventree_last_category'")
+    expect(content).toContain('localStorage.setItem(\'inventree_last_category\'')
 
     // The watcher must also remove the key when category is deselected
-    expect(content).toContain("localStorage.removeItem('inventree_last_category')")
+    expect(content).toContain('localStorage.removeItem(\'inventree_last_category\')')
 
     // The watcher is on selectedCategory
     expect(content).toContain('watch(selectedCategory')
@@ -179,7 +179,7 @@ describe('Scan Category/Location - Unit Tests - Property 4', () => {
     const content = fs.readFileSync(path.resolve(__dirname, '../scan.vue'), 'utf-8')
 
     // onMounted reads the saved category pk from localStorage
-    expect(content).toContain("localStorage.getItem('inventree_last_category')")
+    expect(content).toContain('localStorage.getItem(\'inventree_last_category\')')
 
     // The restoration logic finds a matching category by pk
     expect(content).toContain('categories.value.find(c => c.pk === pk)')
@@ -199,7 +199,7 @@ describe('Scan Category/Location - Property Tests - Property 5', () => {
       fc.property(uniqueLocationListArb, fc.nat(), (locations, indexSeed) => {
         // Pick a location from the list
         const selectedIndex = indexSeed % locations.length
-        const selected = locations[selectedIndex]
+        const selected = locations[selectedIndex]!
 
         // Simulate saving to localStorage (watcher logic from scan.vue)
         const savedPk = String(selected.pk)
@@ -213,7 +213,7 @@ describe('Scan Category/Location - Property Tests - Property 5', () => {
         expect(match!.pk).toBe(selected.pk)
         expect(match!.name).toBe(selected.name)
       }),
-      { numRuns: 100 },
+      { numRuns: 100 }
     )
   })
 
@@ -230,7 +230,7 @@ describe('Scan Category/Location - Property Tests - Property 5', () => {
         // Property: no location matches since all valid pks are >= 1 and invalidPk <= 0
         expect(match).toBeNull()
       }),
-      { numRuns: 100 },
+      { numRuns: 100 }
     )
   })
 })
@@ -244,10 +244,10 @@ describe('Scan Category/Location - Unit Tests - Property 5', () => {
     const content = fs.readFileSync(path.resolve(__dirname, '../scan.vue'), 'utf-8')
 
     // The watcher must write to localStorage with key 'inventree_last_location'
-    expect(content).toContain("localStorage.setItem('inventree_last_location'")
+    expect(content).toContain('localStorage.setItem(\'inventree_last_location\'')
 
     // The watcher must also remove the key when location is deselected
-    expect(content).toContain("localStorage.removeItem('inventree_last_location')")
+    expect(content).toContain('localStorage.removeItem(\'inventree_last_location\')')
 
     // The watcher is on selectedLocation
     expect(content).toContain('watch(selectedLocation')
@@ -259,7 +259,7 @@ describe('Scan Category/Location - Unit Tests - Property 5', () => {
     const content = fs.readFileSync(path.resolve(__dirname, '../scan.vue'), 'utf-8')
 
     // onMounted reads the saved location pk from localStorage
-    expect(content).toContain("localStorage.getItem('inventree_last_location')")
+    expect(content).toContain('localStorage.getItem(\'inventree_last_location\')')
 
     // The restoration logic finds a matching location by pk
     expect(content).toContain('locations.value.find(l => l.pk === pk)')
@@ -294,7 +294,7 @@ describe('Scan Category/Location - Property Tests - Property 2', () => {
         const finalVisibility = createStock
         expect(finalVisibility).toBe(createStock)
       }),
-      { numRuns: 100 },
+      { numRuns: 100 }
     )
   })
 })
@@ -356,7 +356,7 @@ describe('Scan Category/Location - Property Tests - Property 1', () => {
           expect(categoryField).toBeNull()
         }
       }),
-      { numRuns: 100 },
+      { numRuns: 100 }
     )
   })
 })
@@ -373,7 +373,7 @@ describe('Scan Category/Location - Unit Tests - Property 1', () => {
     const createPartFnMatch = content.match(/const createPart = async \(\) => \{([\s\S]*?)\n\}\n/)
     expect(createPartFnMatch).toBeTruthy()
 
-    const createPartBody = createPartFnMatch![1]
+    const createPartBody = createPartFnMatch![1]!
 
     // The partData object must contain the category field with the correct expression
     expect(createPartBody).toContain('category: selectedCategory.value?.pk ?? null')
@@ -408,7 +408,7 @@ describe('Scan Category/Location - Property Tests - Property 3', () => {
           expect(locationField).toBeNull()
         }
       }),
-      { numRuns: 100 },
+      { numRuns: 100 }
     )
   })
 })
@@ -425,7 +425,7 @@ describe('Scan Category/Location - Unit Tests - Property 3', () => {
     const createPartFnMatch = content.match(/const createPart = async \(\) => \{([\s\S]*?)\n\}\n/)
     expect(createPartFnMatch).toBeTruthy()
 
-    const createPartBody = createPartFnMatch![1]
+    const createPartBody = createPartFnMatch![1]!
 
     // The stockData object must contain the location field with the correct expression
     expect(createPartBody).toContain('location: selectedLocation.value?.pk ?? null')

@@ -27,7 +27,7 @@ useSeoMeta({
   title,
   description,
   ogTitle: title,
-  ogDescription: description,
+  ogDescription: description
 })
 
 const { currentUser, users, switchUser, loadUser } = useCurrentUser()
@@ -103,38 +103,65 @@ const settingsNav = [
     <UDashboardGroup>
       <UDashboardSidebar>
         <template #header>
-          <NuxtLink to="/" class="flex items-center gap-2 px-1">
+          <NuxtLink
+            to="/"
+            class="flex items-center gap-2 px-1"
+          >
             <span class="font-bold text-lg bg-gradient-to-r from-primary-500 to-primary-400 bg-clip-text text-transparent tracking-wide">{{ sidebarBrand.highlight }}</span>
             <span class="text-sm text-muted">{{ sidebarBrand.rest }}</span>
           </NuxtLink>
         </template>
 
-        <UNavigationMenu :items="primaryNav" orientation="vertical" />
+        <UNavigationMenu
+          :items="primaryNav"
+          orientation="vertical"
+        />
 
-        <USeparator label="Tools" class="my-2" />
+        <USeparator
+          label="Tools"
+          class="my-2"
+        />
 
-        <UNavigationMenu :items="toolsNav" orientation="vertical" />
+        <UNavigationMenu
+          :items="toolsNav"
+          orientation="vertical"
+        />
 
         <USeparator class="my-2" />
 
-        <UNavigationMenu :items="settingsNav" orientation="vertical" />
+        <UNavigationMenu
+          :items="settingsNav"
+          orientation="vertical"
+        />
 
         <template #footer>
           <div class="flex items-center w-full">
             <UColorModeButton size="xs" />
             <div class="flex-1" />
-            <p class="text-xs text-muted">made by xanderr</p>
+            <p class="text-xs text-muted">
+              made by xanderr
+            </p>
           </div>
         </template>
       </UDashboardSidebar>
 
       <UDashboardPanel>
-        <template v-if="flags.userProfileSwitcher" #header>
+        <template
+          v-if="flags.userProfileSwitcher"
+          #header
+        >
           <UDashboardNavbar :ui="{ root: 'h-10 min-h-10' }">
             <template #right>
               <UDropdownMenu :items="userMenuItems">
-                <UButton variant="ghost" color="neutral" class="gap-2">
-                  <UAvatar :text="currentUser.initials" size="2xs" />
+                <UButton
+                  variant="ghost"
+                  color="neutral"
+                  class="gap-2"
+                >
+                  <UAvatar
+                    :text="currentUser.initials"
+                    size="2xs"
+                  />
                   <span class="text-sm">{{ currentUser.name }}</span>
                 </UButton>
               </UDropdownMenu>

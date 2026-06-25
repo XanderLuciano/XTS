@@ -1,14 +1,6 @@
 import type { Ref } from 'vue'
 import type { Part } from '~/types/inventree'
-
-interface ScanRecord {
-  barcode: string
-  type?: string
-  timestamp: Date
-  lookupStatus: 'loading' | 'found' | 'not_found' | 'error'
-  part?: Part
-  errorMessage?: string
-}
+import type { ScanRecord } from '~/types/scanner'
 
 interface UseScanLookup {
   lookupBarcode(record: ScanRecord, scanHistory: Ref<ScanRecord[]>): Promise<void>

@@ -9,7 +9,7 @@ export function generateBarcode(params: {
   batch: string
   stockItemPk: number
 }): string {
-  const sanitize = (s: string) => s.replace(/\s+/g, '-').replace(/[^A-Za-z0-9\-]/g, '').toUpperCase()
+  const sanitize = (s: string) => s.replace(/\s+/g, '-').replace(/[^A-Za-z0-9-]/g, '').toUpperCase()
 
   const parts = [
     sanitize(params.ipn || 'NOIPN'),
@@ -49,7 +49,7 @@ export function extractTicketsFromNotes(notes: string | null | undefined): strin
  * and validates each matches {TEXT}-{NUMBER} format.
  * Returns { valid: true, tickets: [...] } or { valid: false, invalid: [...] }
  */
-export function sanitizeTickets(input: string): { valid: true; tickets: string[] } | { valid: false; invalid: string[] } {
+export function sanitizeTickets(input: string): { valid: true, tickets: string[] } | { valid: false, invalid: string[] } {
   if (!input.trim()) return { valid: true, tickets: [] }
 
   const raw = input.split(',').map(t => t.trim().toUpperCase()).filter(Boolean)
@@ -96,4 +96,40 @@ export function setBarcodeInNotes(existingNotes: string | null | undefined, barc
 
   // Append
   return `${existingNotes}\n${prefix}`
+}
+
+/**
+ * The kind of conflict detected when a manually-entered barcode is already
+ * linked to an existing part in InvenTree.
+ *
+ * - 'same-part'        — same IPN and same revision (a true match)
+ * - 'same-ipn-diff-rev' — same IPN but a different revision of that part
+ * - 'different-part'   — a different part entirely (IPN mismatch)
+ */
+export type BarcodeMatchKind = 'same-part' | 'same-ipn-diff-rev' | 'different-part'
+
+/**
+ * Compare an existing barcode-linked part against the part being created.
+ *
+ * Barcodes encode partnumber-rev-vendor, so a genuine match requires both the
+ * IPN and the revision to line up. A blank IPN on either side can never be a
+ * "same part" match because it is not a meaningful part identifier.
+ */
+export function classifyBarcodeMatch(params: {
+  existingIpn: string | null | undefined
+  existingRevision: string | null | undefined
+  enteredIpn: string | null | undefined
+  enteredRevision: string | null | undefined
+}): BarcodeMatchKind {
+  const existingIpn = (params.existingIpn || '').trim()
+  const enteredIpn = (params.enteredIpn || '').trim()
+  const existingRev = (params.existingRevision || '').trim()
+  const enteredRev = (params.enteredRevision || '').trim()
+
+  const ipnMatches = enteredIpn.length > 0 && existingIpn === enteredIpn
+  const revMatches = existingRev === enteredRev
+
+  if (ipnMatches && revMatches) return 'same-part'
+  if (ipnMatches) return 'same-ipn-diff-rev'
+  return 'different-part'
 }

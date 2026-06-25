@@ -17,9 +17,9 @@ describe('removeStock', () => {
         async (stockItemId, quantity, notes) => {
           const { mockApi, service } = createMockService()
           mockSuccessResponse(mockApi, undefined)
-          
+
           await service.removeStock(stockItemId, { quantity, notes: notes ?? undefined })
-          
+
           expect(mockApi).toHaveBeenCalledWith('/stock/remove/', expect.objectContaining({
             method: 'POST',
             body: expect.any(Object)
@@ -39,9 +39,9 @@ describe('removeStock', () => {
         async (stockItemId, quantity, notes) => {
           const { mockApi, service } = createMockService()
           mockSuccessResponse(mockApi, undefined)
-          
+
           await service.removeStock(stockItemId, { quantity, notes: notes ?? undefined })
-          
+
           const requestBody = getRequestBody(mockApi)
           expect(requestBody.items).toBeDefined()
           expect(requestBody.items).toHaveLength(1)
@@ -62,9 +62,9 @@ describe('removeStock', () => {
         async (stockItemId, quantity, notes) => {
           const { mockApi, service } = createMockService()
           mockSuccessResponse(mockApi, undefined)
-          
+
           await service.removeStock(stockItemId, { quantity, notes })
-          
+
           const requestBody = getRequestBody(mockApi)
           expect(requestBody.notes).toBe(notes)
         }
@@ -83,7 +83,7 @@ describe('removeStock', () => {
         async (stockItemId, quantity, notes, errorMessage) => {
           const { mockApi, service } = createMockService()
           const expectedError = mockErrorResponse(mockApi, errorMessage)
-          
+
           await expectErrorPropagation(
             () => service.removeStock(stockItemId, { quantity, notes: notes ?? undefined }),
             expectedError

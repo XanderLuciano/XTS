@@ -27,15 +27,15 @@ interface QROptions {
 interface BarcodeOptions {
   x: number
   y: number
-  type: string        // e.g. "CODE128"
+  type: string // e.g. "CODE128"
   height?: number
   narrowBarWidth?: number
 }
 
-type LabelElement =
-  | { type: 'text'; content: string; options: TextOptions }
-  | { type: 'qrcode'; content: string; options: QROptions }
-  | { type: 'barcode'; content: string; options: BarcodeOptions }
+type LabelElement
+  = | { type: 'text', content: string, options: TextOptions }
+    | { type: 'qrcode', content: string, options: QROptions }
+    | { type: 'barcode', content: string, options: BarcodeOptions }
 
 interface PrintResult {
   success: boolean
@@ -56,8 +56,8 @@ interface PrintLabelBody {
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig(event)
 
-  const { barcode, partName, partNumber, quantity, vendor, printerUrl: bodyPrinterUrl, apiKey: bodyApiKey } =
-    await readBody<PrintLabelBody>(event)
+  const { barcode, partName, partNumber, quantity, vendor, printerUrl: bodyPrinterUrl, apiKey: bodyApiKey }
+    = await readBody<PrintLabelBody>(event)
 
   // Client-provided values (from localStorage) take priority over env defaults
   const printerUrl = bodyPrinterUrl || config.public.zebraPrinterUrl as string

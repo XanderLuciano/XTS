@@ -16,9 +16,9 @@ describe('getStockItems', () => {
         async (partId, mockResponse) => {
           const { mockApi, service } = createMockService()
           mockSuccessResponse(mockApi, mockResponse)
-          
+
           await service.getStockItems(partId)
-          
+
           expect(mockApi).toHaveBeenCalledWith(`/stock/?part=${partId}&in_stock=true`)
         }
       ),
@@ -34,7 +34,7 @@ describe('getStockItems', () => {
         async (partId, errorMessage) => {
           const { mockApi, service } = createMockService()
           const expectedError = mockErrorResponse(mockApi, errorMessage)
-          
+
           await expectErrorPropagation(
             () => service.getStockItems(partId),
             expectedError
@@ -47,23 +47,23 @@ describe('getStockItems', () => {
 
   it('should return empty array when response has no results property', async () => {
     const { mockApi, service } = createMockService()
-    
+
     // Mock response that is an object but has no results property
     mockApi.mockResolvedValue({ count: 0, data: [] })
-    
+
     const result = await service.getStockItems(123)
-    
+
     expect(result).toEqual([])
   })
 
   it('should return empty array when response.results is null', async () => {
     const { mockApi, service } = createMockService()
-    
+
     // Mock response with results: null
     mockApi.mockResolvedValue({ results: null })
-    
+
     const result = await service.getStockItems(123)
-    
+
     expect(result).toEqual([])
   })
 })

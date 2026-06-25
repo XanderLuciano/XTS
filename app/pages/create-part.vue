@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import type { CreatePartDto, AddStockDto, PartCategory } from '~/types/inventree'
-import { generateBarcode, setBarcodeInNotes, sanitizeTickets, setTicketsInNotes } from '~/utils/barcode'
+import type { CreatePartDto, AddStockDto, PartCategory, Part, StockItem } from '~/types/inventree'
+import type { ComponentPublicInstance } from 'vue'
+import { generateBarcode, setBarcodeInNotes, sanitizeTickets, setTicketsInNotes, classifyBarcodeMatch } from '~/utils/barcode'
 import { sanitizeRevision } from '~/utils/sanitizeRevision'
 
 // Pre-defined vendor options
@@ -15,6 +16,7 @@ interface PartForm {
   createStock: boolean
   stockQuantity: number
   jiraTickets: string
+  barcode: string
   printLabels: boolean
   labelMode: 'one' | 'per-item'
 }
@@ -24,7 +26,7 @@ const toast = useToast()
 
 const isLoading = ref(false)
 
-const stockQuantityInput = ref<InstanceType<typeof UInput> | null>(null)
+const stockQuantityInput = ref<ComponentPublicInstance | null>(null)
 
 // Load persisted settings from localStorage (SSR-safe)
 const partForm = reactive<PartForm>({
@@ -36,6 +38,7 @@ const partForm = reactive<PartForm>({
   createStock: true,
   stockQuantity: 1,
   jiraTickets: '',
+  barcode: '',
   printLabels: false,
   labelMode: 'one'
 })
@@ -54,7 +57,7 @@ const ticketValidation = computed(() => {
 })
 
 // Hydrate persisted settings on mount to avoid SSR mismatch
-onMounted(() => {
+onMounted(async () => {
   try {
     const storedPrintLabels = localStorage.getItem('create_part_print_labels')
     if (storedPrintLabels === 'true') {
@@ -73,10 +76,28 @@ onMounted(() => {
   } catch {
     // Corrupt or unavailable storage — keep defaults
   }
+
+  // Load categories since advanced options are expanded by default
+  if (categories.value.length === 0) {
+    isLoadingCategories.value = true
+    try {
+      categories.value = await inventree.getCategories()
+      if (selectedCategory.value != null) {
+        const stillValid = categories.value.some(c => c.pk === selectedCategory.value)
+        if (!stillValid) {
+          selectedCategory.value = null
+        }
+      }
+    } catch {
+      // silently fail
+    } finally {
+      isLoadingCategories.value = false
+    }
+  }
 })
 
 // Category state
-const showAdvancedOptions = ref(false)
+const showAdvancedOptions = ref(true)
 const categories = ref<PartCategory[]>([])
 const isLoadingCategories = ref(false)
 const selectedCategory = ref<number | null>(null)
@@ -169,6 +190,56 @@ const createPart = async () => {
       partForm.revision = sanitizeRevision(partForm.revision)
     }
 
+    // Validate provided barcode is not already in use.
+    // If it is in use, compare the existing part's IPN to the one being created
+    // and let the user know whether it's the same part or a different one.
+    const manualBarcode = partForm.barcode.trim()
+    if (manualBarcode) {
+      let existingBarcodePart: Part | null = null
+      try {
+        existingBarcodePart = await inventree.scanBarcode(manualBarcode)
+      } catch {
+        // Treat lookup failures as "unable to verify" and stop to avoid duplicate barcodes
+        toast.add({
+          title: 'Could not verify barcode',
+          description: 'Unable to check whether this barcode is already in use. Please try again.',
+          color: 'error'
+        })
+        isLoading.value = false
+        return
+      }
+
+      if (existingBarcodePart) {
+        const existingIpn = existingBarcodePart.IPN || '(no IPN)'
+        const existingRev = existingBarcodePart.revision || ''
+        const matchKind = classifyBarcodeMatch({
+          existingIpn: existingBarcodePart.IPN,
+          existingRevision: existingBarcodePart.revision,
+          enteredIpn: partForm.IPN,
+          enteredRevision: partForm.revision
+        })
+
+        const existingLabel = `${existingBarcodePart.name} (IPN: ${existingIpn}${existingRev ? `, Rev ${existingRev}` : ''})`
+        let description: string
+        if (matchKind === 'same-part') {
+          description = `Barcode ${manualBarcode} is already linked to this part (IPN: ${existingIpn}${existingRev ? `, Rev ${existingRev}` : ''}).`
+        } else if (matchKind === 'same-ipn-diff-rev') {
+          // Same part number but a different revision — likely a different revision of the same part
+          description = `Barcode ${manualBarcode} is already in use by a different revision of this part: ${existingLabel}.`
+        } else {
+          description = `Barcode ${manualBarcode} is already in use by a different part: ${existingLabel}.`
+        }
+
+        toast.add({
+          title: 'Barcode already in use',
+          description,
+          color: matchKind === 'same-part' ? 'warning' : 'error'
+        })
+        isLoading.value = false
+        return
+      }
+    }
+
     // Compose display name: "165580-001 · Rev A · 10K Ohm Resistor"
     const composedName = [
       partForm.IPN,
@@ -208,7 +279,7 @@ const createPart = async () => {
       toast.add({ title: 'Part created', description: composedName, color: 'success' })
     }
 
-    let stockItem: { pk: number } | undefined
+    let stockItem: StockItem | undefined
 
     // Step 3: Handle stock
     if (partForm.createStock && partPk) {
@@ -294,57 +365,75 @@ const createPart = async () => {
       })
     }
 
-    // Step 4: Print labels and link barcode if enabled
-    // Skip printing if we just added to an existing vendor's stock (it already has a label)
-    if (partForm.printLabels && stockItem && action !== 'added-stock-existing-vendor') {
+    // Step 4: Link barcode and optionally print labels
+    // We link a barcode when the user provided one manually, or when printing labels
+    // (which generates a deterministic barcode). Skip when we added to an existing
+    // vendor's stock since that item already has a barcode/label.
+    const shouldHandleBarcode = (manualBarcode || partForm.printLabels)
+      && stockItem
+      && action !== 'added-stock-existing-vendor'
+
+    if (shouldHandleBarcode && stockItem) {
       try {
-        const barcode = generateBarcode({
+        const barcode = manualBarcode || generateBarcode({
           ipn: partForm.IPN,
           revision: partForm.revision,
           batch: partForm.vendor,
           stockItemPk: stockItem.pk
         })
 
-        const labelCount = partForm.labelMode === 'per-item'
-          ? partForm.stockQuantity
-          : 1
-        const quantity = partForm.labelMode === 'one' ? partForm.stockQuantity : undefined
+        // Print labels only when requested
+        if (partForm.printLabels) {
+          const labelCount = partForm.labelMode === 'per-item'
+            ? partForm.stockQuantity
+            : 1
+          const quantity = partForm.labelMode === 'one' ? partForm.stockQuantity : undefined
 
-        const printerUrl = localStorage.getItem('zebra_printer_url') || ''
-        const printerApiKey = localStorage.getItem('zebra_api_key') || ''
+          const printerUrl = localStorage.getItem('zebra_printer_url') || ''
+          const printerApiKey = localStorage.getItem('zebra_api_key') || ''
 
-        for (let i = 0; i < labelCount; i++) {
-          await $fetch('/api/print-label', {
-            method: 'POST',
-            body: {
-              barcode,
-              partName: partForm.name,
-              partNumber: partForm.IPN || 'N/A',
-              quantity,
-              vendor: partForm.vendor || undefined,
-              printerUrl: printerUrl || undefined,
-              apiKey: printerApiKey || undefined
-            }
-          })
+          for (let i = 0; i < labelCount; i++) {
+            await $fetch('/api/print-label', {
+              method: 'POST',
+              body: {
+                barcode,
+                partName: partForm.name,
+                partNumber: partForm.IPN || 'N/A',
+                quantity,
+                vendor: partForm.vendor || undefined,
+                printerUrl: printerUrl || undefined,
+                apiKey: printerApiKey || undefined
+              }
+            })
+          }
         }
 
         // Link barcode to the stock item
         await inventree.linkBarcode(barcode, stockItem.pk)
 
         // Store barcode in notes for future reprinting
-        const currentNotes = (stockItem as any).notes || ''
+        const currentNotes = stockItem.notes || ''
         const updatedNotes = setBarcodeInNotes(currentNotes, barcode)
         await inventree.updateStockItem(stockItem.pk, { notes: updatedNotes })
 
-        const copies = labelCount > 1 ? ` (${labelCount} identical copies)` : ''
-        toast.add({
-          title: labelCount === 1 ? 'Label printed' : `${labelCount} labels printed`,
-          description: `Barcode: ${barcode}${copies}`,
-          color: 'success'
-        })
+        if (partForm.printLabels) {
+          const labelCount = partForm.labelMode === 'per-item' ? partForm.stockQuantity : 1
+          const copies = labelCount > 1 ? ` (${labelCount} identical copies)` : ''
+          toast.add({
+            title: labelCount === 1 ? 'Label printed' : `${labelCount} labels printed`,
+            description: `Barcode: ${barcode}${copies}`,
+            color: 'success'
+          })
+        } else {
+          toast.add({
+            title: 'Barcode linked',
+            description: `Barcode ${barcode} linked to stock item`,
+            color: 'success'
+          })
+        }
       } catch (labelError) {
-        const message = labelError instanceof Error ? labelError.message : 'Failed to print label'
-        toast.add({ title: 'Label printing failed', description: message, color: 'error' })
+        const message = labelError instanceof Error ? labelError.message : 'Failed to link barcode or print label'
+        toast.add({ title: 'Barcode/label step failed', description: message, color: 'error' })
       }
     }
 
@@ -363,6 +452,7 @@ const createPart = async () => {
     partForm.IPN = ''
     partForm.revision = ''
     partForm.jiraTickets = ''
+    partForm.barcode = ''
     partForm.createStock = true
     partForm.stockQuantity = 1
   } catch (error) {
@@ -372,41 +462,80 @@ const createPart = async () => {
     isLoading.value = false
   }
 }
-
 </script>
 
 <template>
   <div class="container mx-auto p-6 max-w-3xl">
     <div class="mb-8">
-      <h1 class="text-2xl font-bold mb-2">Create Part</h1>
-      <p class="text-gray-600 dark:text-gray-400">Add a new part to the InvenTree database</p>
+      <h1 class="text-2xl font-bold mb-2">
+        Create Part
+      </h1>
+      <p class="text-gray-600 dark:text-gray-400">
+        Add a new part to the InvenTree database
+      </p>
     </div>
 
     <!-- Part Creation Form -->
     <UCard class="mb-6">
       <div class="space-y-6">
         <!-- Part Number (IPN) -->
-        <UFormField label="Part Number" required description="Engineering part number, e.g. 165801-001">
-          <UInput v-model="partForm.IPN" placeholder="e.g. 165801-001" class="w-full" />
+        <UFormField
+          label="Part Number"
+          required
+          description="Engineering part number, e.g. 165801-001"
+        >
+          <UInput
+            v-model="partForm.IPN"
+            placeholder="e.g. 165801-001"
+            class="w-full"
+          />
         </UFormField>
 
         <!-- Part Revision -->
-        <UFormField label="Part Revision" required description="Just the letter or number — &quot;Rev&quot; is prepended automatically">
-          <UInput v-model="partForm.revision" placeholder="e.g. A" class="w-full" />
+        <UFormField
+          label="Part Revision"
+          required
+          description="Just the letter or number — &quot;Rev&quot; is prepended automatically"
+        >
+          <UInput
+            v-model="partForm.revision"
+            placeholder="e.g. A"
+            class="w-full"
+          />
         </UFormField>
 
         <!-- Part Name -->
-        <UFormField label="Part Name" required description="The display name of the part">
-          <UInput v-model="partForm.name" placeholder="e.g. Fork Arm" size="lg" class="w-full" />
+        <UFormField
+          label="Part Name"
+          required
+          description="The display name of the part"
+        >
+          <UInput
+            v-model="partForm.name"
+            placeholder="e.g. Fork Arm"
+            size="lg"
+            class="w-full"
+          />
         </UFormField>
 
         <!-- Description -->
-        <UFormField label="Description" description="Optional description of the part">
-          <UTextarea v-model="partForm.description" placeholder="e.g. Injection molded ABS, black, snap-fit" :rows="3" class="w-full" />
+        <UFormField
+          label="Description"
+          description="Optional description of the part"
+        >
+          <UTextarea
+            v-model="partForm.description"
+            placeholder="e.g. Injection molded ABS, black, snap-fit"
+            :rows="3"
+            class="w-full"
+          />
         </UFormField>
 
         <!-- Vendor -->
-        <UFormField label="Vendor" description="Supplier/vendor for this stock (tracked per stock line item)">
+        <UFormField
+          label="Vendor"
+          description="Supplier/vendor for this stock (tracked per stock line item)"
+        >
           <USelectMenu
             v-model="partForm.vendor"
             :items="vendorItems"
@@ -433,18 +562,21 @@ const createPart = async () => {
             Advanced Options
           </button>
 
-          <div v-if="showAdvancedOptions" class="mt-3 space-y-3 pl-5 border-l-2 border-gray-200 dark:border-gray-700">
+          <div
+            v-if="showAdvancedOptions"
+            class="mt-3 space-y-3 pl-5 border-l-2 border-gray-200 dark:border-gray-700"
+          >
             <div>
               <label class="block text-sm font-medium mb-1">Category</label>
               <USelectMenu
-                :model-value="selectedCategory"
+                :model-value="selectedCategory ?? undefined"
                 :items="categoryItems"
                 value-key="value"
                 placeholder="Select a category..."
                 :loading="isLoadingCategories"
                 :search-input="true"
                 class="w-full"
-                @update:model-value="(val: any) => selectedCategory = val"
+                @update:model-value="(val: number | null) => selectedCategory = val"
               />
             </div>
           </div>
@@ -458,12 +590,24 @@ const createPart = async () => {
             <UCheckbox v-model="partForm.createStock" />
             <div>
               <label class="text-sm font-medium">Create Initial Stock</label>
-              <p class="text-xs text-gray-500">Initial stock will be created when the part is saved</p>
+              <p class="text-xs text-gray-500">
+                Initial stock will be created when the part is saved
+              </p>
             </div>
           </div>
 
-          <UFormField v-if="partForm.createStock" label="Stock Quantity" description="Number of units to add">
-            <UInput ref="stockQuantityInput" v-model.number="partForm.stockQuantity" type="number" min="1" class="w-full" />
+          <UFormField
+            v-if="partForm.createStock"
+            label="Stock Quantity"
+            description="Number of units to add"
+          >
+            <UInput
+              ref="stockQuantityInput"
+              v-model.number="partForm.stockQuantity"
+              type="number"
+              min="1"
+              class="w-full"
+            />
           </UFormField>
 
           <!-- JIRA Ticket(s) -->
@@ -482,17 +626,39 @@ const createPart = async () => {
             />
           </UFormField>
 
+          <!-- Existing Barcode -->
+          <UFormField
+            v-if="partForm.createStock"
+            label="Existing Barcode"
+            description="Optional — if the part already has a barcode applied, enter it here to link it instead of generating a new one"
+          >
+            <UInput
+              v-model="partForm.barcode"
+              placeholder="Scan or type existing barcode..."
+              class="w-full"
+              :ui="{ base: 'font-mono' }"
+            />
+          </UFormField>
+
           <!-- Label Printing -->
-          <div v-if="partForm.createStock" class="space-y-3 pt-2">
+          <div
+            v-if="partForm.createStock"
+            class="space-y-3 pt-2"
+          >
             <div class="flex items-center gap-2">
               <UCheckbox v-model="partForm.printLabels" />
               <div>
                 <label class="text-sm font-medium">Print labels for this stock</label>
-                <p class="text-xs text-gray-500">Print Zebra labels with part name, part number, and QR code</p>
+                <p class="text-xs text-gray-500">
+                  Print Zebra labels with part name, part number, and QR code
+                </p>
               </div>
             </div>
 
-            <div v-if="partForm.printLabels" class="ml-7 space-y-3">
+            <div
+              v-if="partForm.printLabels"
+              class="ml-7 space-y-3"
+            >
               <div class="flex items-center gap-4">
                 <URadioGroup
                   v-model="partForm.labelMode"
@@ -520,11 +686,11 @@ const createPart = async () => {
       <template #footer>
         <div class="flex justify-end">
           <UButton
-            @click="createPart"
             :loading="isLoading"
             :disabled="!partForm.name || !ticketValidation.valid"
             icon="i-lucide-plus"
             size="lg"
+            @click="createPart"
           >
             Create Part
           </UButton>

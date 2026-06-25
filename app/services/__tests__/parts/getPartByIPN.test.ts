@@ -16,9 +16,9 @@ describe('getPartByIPN', () => {
         async (ipn, mockResponse) => {
           const { mockApi, service } = createMockService()
           mockSuccessResponse(mockApi, mockResponse)
-          
+
           await service.getPartByIPN(ipn)
-          
+
           expect(mockApi).toHaveBeenCalledWith('/part/', {
             method: 'GET',
             query: { IPN: ipn }
@@ -37,7 +37,7 @@ describe('getPartByIPN', () => {
         async (ipn, errorMessage) => {
           const { mockApi, service } = createMockService()
           const expectedError = mockErrorResponse(mockApi, errorMessage)
-          
+
           await expectErrorPropagation(
             () => service.getPartByIPN(ipn),
             expectedError

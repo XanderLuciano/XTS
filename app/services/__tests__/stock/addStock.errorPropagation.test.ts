@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import fc from 'fast-check'
 import { InventreeService } from '../../inventree.service'
 import type { AddStockDto } from '~/types/inventree'
@@ -112,7 +112,7 @@ describe('addStock - Error Propagation', () => {
               call => call[0] === '/stock/add/' && call[1]?.method === 'POST'
             )
             expect(addToExistingCall).toBeDefined()
-            expect(addToExistingCall![1].body.items[0].pk).toBe(existingStock[0].pk)
+            expect(addToExistingCall![1].body.items[0].pk).toBe(existingStock[0]!.pk)
 
             // Verify: No POST /stock/ call was made (no fallback to creating new)
             const createNewCall = mockApi.mock.calls.find(

@@ -16,9 +16,9 @@ describe('createPart', () => {
         async (partData, mockResponse) => {
           const { mockApi, service } = createMockService()
           mockSuccessResponse(mockApi, mockResponse)
-          
+
           await service.createPart(partData)
-          
+
           expect(mockApi).toHaveBeenCalledWith('/part/', expect.objectContaining({
             method: 'POST',
             body: expect.any(Object)
@@ -37,23 +37,23 @@ describe('createPart', () => {
         async (partData, mockResponse) => {
           const { mockApi, service } = createMockService()
           mockSuccessResponse(mockApi, mockResponse)
-          
+
           await service.createPart(partData)
-          
+
           const requestBody = getRequestBody(mockApi)
-          
+
           if (partData.category === undefined) {
             expect(requestBody.category).toBe(null)
           } else {
             expect(requestBody.category).toBe(partData.category)
           }
-          
+
           if (partData.active === undefined) {
             expect(requestBody.active).toBe(true)
           } else {
             expect(requestBody.active).toBe(partData.active)
           }
-          
+
           if (partData.virtual === undefined) {
             expect(requestBody.virtual).toBe(false)
           } else {
@@ -73,9 +73,9 @@ describe('createPart', () => {
         async (partData, mockResponse) => {
           const { mockApi, service } = createMockService()
           mockSuccessResponse(mockApi, mockResponse)
-          
+
           const result = await service.createPart(partData)
-          
+
           expect(result).toBe(mockResponse)
         }
       ),
@@ -91,7 +91,7 @@ describe('createPart', () => {
         async (partData, errorMessage) => {
           const { mockApi, service } = createMockService()
           const expectedError = mockErrorResponse(mockApi, errorMessage)
-          
+
           await expectErrorPropagation(
             () => service.createPart(partData),
             expectedError

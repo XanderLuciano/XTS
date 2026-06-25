@@ -6,11 +6,19 @@ const config = useRuntimeConfig()
   <div class="container mx-auto p-6 max-w-4xl">
     <div class="flex items-center justify-between mb-6">
       <div>
-        <h1 class="text-2xl font-bold mb-1">{{ config.public.appName }}</h1>
-        <p class="text-sm text-gray-600 dark:text-gray-400">{{ config.public.appTagline }}</p>
+        <h1 class="text-2xl font-bold mb-1">
+          {{ config.public.appName }}
+        </h1>
+        <p class="text-sm text-gray-600 dark:text-gray-400">
+          {{ config.public.appTagline }}
+        </p>
       </div>
       <NuxtLink to="/config">
-        <UButton variant="outline" icon="i-lucide-settings" size="sm">
+        <UButton
+          variant="outline"
+          icon="i-lucide-settings"
+          size="sm"
+        >
           Config
         </UButton>
       </NuxtLink>
@@ -22,9 +30,14 @@ const config = useRuntimeConfig()
         <template #header>
           <div class="flex items-center gap-3">
             <div class="p-2 bg-orange-100 dark:bg-orange-900 rounded-lg">
-              <UIcon name="i-lucide-shopping-cart" class="w-6 h-6 text-orange-600 dark:text-orange-400" />
+              <UIcon
+                name="i-lucide-shopping-cart"
+                class="w-6 h-6 text-orange-600 dark:text-orange-400"
+              />
             </div>
-            <h2 class="text-xl font-semibold">Self-Checkout</h2>
+            <h2 class="text-xl font-semibold">
+              Self-Checkout
+            </h2>
           </div>
         </template>
 
@@ -34,7 +47,11 @@ const config = useRuntimeConfig()
 
         <template #footer>
           <NuxtLink to="/checkout">
-            <UButton block icon="i-lucide-arrow-right" trailing>
+            <UButton
+              block
+              icon="i-lucide-arrow-right"
+              trailing
+            >
               Go to Checkout
             </UButton>
           </NuxtLink>
@@ -45,9 +62,14 @@ const config = useRuntimeConfig()
         <template #header>
           <div class="flex items-center gap-3">
             <div class="p-2 bg-teal-100 dark:bg-teal-900 rounded-lg">
-              <UIcon name="i-lucide-clipboard-check" class="w-6 h-6 text-teal-600 dark:text-teal-400" />
+              <UIcon
+                name="i-lucide-clipboard-check"
+                class="w-6 h-6 text-teal-600 dark:text-teal-400"
+              />
             </div>
-            <h2 class="text-xl font-semibold">Stock Taking</h2>
+            <h2 class="text-xl font-semibold">
+              Stock Taking
+            </h2>
           </div>
         </template>
 
@@ -57,7 +79,11 @@ const config = useRuntimeConfig()
 
         <template #footer>
           <NuxtLink to="/stock-taking">
-            <UButton block icon="i-lucide-arrow-right" trailing>
+            <UButton
+              block
+              icon="i-lucide-arrow-right"
+              trailing
+            >
               Go to Stock Taking
             </UButton>
           </NuxtLink>
@@ -67,7 +93,9 @@ const config = useRuntimeConfig()
 
     <!-- Tools Section -->
     <div class="mb-4">
-      <h2 class="text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Tools</h2>
+      <h2 class="text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+        Tools
+      </h2>
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -75,9 +103,14 @@ const config = useRuntimeConfig()
         <template #header>
           <div class="flex items-center gap-2">
             <div class="p-1.5 bg-blue-100 dark:bg-blue-900 rounded-lg">
-              <UIcon name="i-lucide-plus-circle" class="w-5 h-5 text-blue-600 dark:text-blue-400" />
+              <UIcon
+                name="i-lucide-plus-circle"
+                class="w-5 h-5 text-blue-600 dark:text-blue-400"
+              />
             </div>
-            <h3 class="text-base font-semibold">Create Part</h3>
+            <h3 class="text-base font-semibold">
+              Create Part
+            </h3>
           </div>
         </template>
 
@@ -87,7 +120,12 @@ const config = useRuntimeConfig()
 
         <template #footer>
           <NuxtLink to="/create-part">
-            <UButton block size="sm" icon="i-lucide-arrow-right" trailing>
+            <UButton
+              block
+              size="sm"
+              icon="i-lucide-arrow-right"
+              trailing
+            >
               Create Part
             </UButton>
           </NuxtLink>
@@ -98,9 +136,14 @@ const config = useRuntimeConfig()
         <template #header>
           <div class="flex items-center gap-2">
             <div class="p-1.5 bg-green-100 dark:bg-green-900 rounded-lg">
-              <UIcon name="i-lucide-package-plus" class="w-5 h-5 text-green-600 dark:text-green-400" />
+              <UIcon
+                name="i-lucide-package-plus"
+                class="w-5 h-5 text-green-600 dark:text-green-400"
+              />
             </div>
-            <h3 class="text-base font-semibold">Add Stock</h3>
+            <h3 class="text-base font-semibold">
+              Add Stock
+            </h3>
           </div>
         </template>
 
@@ -110,7 +153,12 @@ const config = useRuntimeConfig()
 
         <template #footer>
           <NuxtLink to="/add-stock">
-            <UButton block size="sm" icon="i-lucide-arrow-right" trailing>
+            <UButton
+              block
+              size="sm"
+              icon="i-lucide-arrow-right"
+              trailing
+            >
               Add Stock
             </UButton>
           </NuxtLink>
@@ -121,9 +169,14 @@ const config = useRuntimeConfig()
         <template #header>
           <div class="flex items-center gap-2">
             <div class="p-1.5 bg-purple-100 dark:bg-purple-900 rounded-lg">
-              <UIcon name="i-lucide-scan-barcode" class="w-5 h-5 text-purple-600 dark:text-purple-400" />
+              <UIcon
+                name="i-lucide-scan-barcode"
+                class="w-5 h-5 text-purple-600 dark:text-purple-400"
+              />
             </div>
-            <h3 class="text-base font-semibold">Barcode Scanner</h3>
+            <h3 class="text-base font-semibold">
+              Barcode Scanner
+            </h3>
           </div>
         </template>
 
@@ -133,7 +186,12 @@ const config = useRuntimeConfig()
 
         <template #footer>
           <NuxtLink to="/scan">
-            <UButton block size="sm" icon="i-lucide-arrow-right" trailing>
+            <UButton
+              block
+              size="sm"
+              icon="i-lucide-arrow-right"
+              trailing
+            >
               Scanner
             </UButton>
           </NuxtLink>
@@ -144,9 +202,14 @@ const config = useRuntimeConfig()
         <template #header>
           <div class="flex items-center gap-2">
             <div class="p-1.5 bg-indigo-100 dark:bg-indigo-900 rounded-lg">
-              <UIcon name="i-lucide-warehouse" class="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+              <UIcon
+                name="i-lucide-warehouse"
+                class="w-5 h-5 text-indigo-600 dark:text-indigo-400"
+              />
             </div>
-            <h3 class="text-base font-semibold">View Stock</h3>
+            <h3 class="text-base font-semibold">
+              View Stock
+            </h3>
           </div>
         </template>
 
@@ -156,7 +219,12 @@ const config = useRuntimeConfig()
 
         <template #footer>
           <NuxtLink to="/stock">
-            <UButton block size="sm" icon="i-lucide-arrow-right" trailing>
+            <UButton
+              block
+              size="sm"
+              icon="i-lucide-arrow-right"
+              trailing
+            >
               View Stock
             </UButton>
           </NuxtLink>
@@ -167,9 +235,14 @@ const config = useRuntimeConfig()
         <template #header>
           <div class="flex items-center gap-2">
             <div class="p-1.5 bg-yellow-100 dark:bg-yellow-900 rounded-lg">
-              <UIcon name="i-lucide-layers" class="w-5 h-5 text-yellow-600 dark:text-yellow-400" />
+              <UIcon
+                name="i-lucide-layers"
+                class="w-5 h-5 text-yellow-600 dark:text-yellow-400"
+              />
             </div>
-            <h3 class="text-base font-semibold">BOM</h3>
+            <h3 class="text-base font-semibold">
+              BOM
+            </h3>
           </div>
         </template>
 
@@ -179,7 +252,12 @@ const config = useRuntimeConfig()
 
         <template #footer>
           <NuxtLink to="/bom">
-            <UButton block size="sm" icon="i-lucide-arrow-right" trailing>
+            <UButton
+              block
+              size="sm"
+              icon="i-lucide-arrow-right"
+              trailing
+            >
               Bill of Materials
             </UButton>
           </NuxtLink>

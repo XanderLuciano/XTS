@@ -28,7 +28,7 @@ describe('BarcodeScanner - Property Tests', () => {
     Object.defineProperty(navigator, 'mediaDevices', {
       value: originalMediaDevices,
       writable: true,
-      configurable: true,
+      configurable: true
     })
     if (originalBarcodeDetector) {
       (globalThis as Record<string, unknown>).BarcodeDetector = originalBarcodeDetector
@@ -48,22 +48,22 @@ describe('BarcodeScanner - Property Tests', () => {
         // Use a generic name (not NotAllowedError/NotFoundError) so the composable
         // falls through to the else branch and uses domError.message directly.
         const getUserMediaMock = vi.fn().mockRejectedValue(
-          new DOMException(errorMessage, 'AbortError'),
+          new DOMException(errorMessage, 'AbortError')
         )
 
         Object.defineProperty(navigator, 'mediaDevices', {
           value: {
             getUserMedia: getUserMediaMock,
-            enumerateDevices: vi.fn().mockResolvedValue([]),
+            enumerateDevices: vi.fn().mockResolvedValue([])
           },
           writable: true,
-          configurable: true,
+          configurable: true
         })
 
         const wrapper = mount(BarcodeScanner, {
           global: {
-            stubs: { UIcon: true },
-          },
+            stubs: { UIcon: true }
+          }
         })
 
         // Call startCamera via the exposed method — this triggers getUserMedia rejection
@@ -84,7 +84,7 @@ describe('BarcodeScanner - Property Tests', () => {
 
         wrapper.unmount()
       }),
-      { numRuns: 100 },
+      { numRuns: 100 }
     )
   })
 
@@ -102,7 +102,7 @@ describe('BarcodeScanner - Property Tests', () => {
           kind: 'videoinput' as MediaDeviceKind,
           label: `Camera ${index + 1}`,
           groupId: `group-${index}`,
-          toJSON: () => ({}),
+          toJSON: () => ({})
         }))
 
         // Each call to getUserMedia/switchCamera needs a fresh mock stream
@@ -117,10 +117,10 @@ describe('BarcodeScanner - Property Tests', () => {
         Object.defineProperty(navigator, 'mediaDevices', {
           value: {
             getUserMedia: getUserMediaMock,
-            enumerateDevices: enumerateDevicesMock,
+            enumerateDevices: enumerateDevicesMock
           },
           writable: true,
-          configurable: true,
+          configurable: true
         })
 
         const playMock = vi.spyOn(HTMLVideoElement.prototype, 'play').mockResolvedValue()
@@ -130,13 +130,13 @@ describe('BarcodeScanner - Property Tests', () => {
         Object.defineProperty(HTMLVideoElement.prototype, 'srcObject', {
           set: vi.fn(),
           get: vi.fn().mockReturnValue(null),
-          configurable: true,
+          configurable: true
         })
 
         const wrapper = mount(BarcodeScanner, {
           global: {
-            stubs: { UIcon: true },
-          },
+            stubs: { UIcon: true }
+          }
         })
 
         // Start camera to populate availableCameras
@@ -180,7 +180,7 @@ describe('BarcodeScanner - Property Tests', () => {
           Object.defineProperty(HTMLVideoElement.prototype, 'srcObject', srcObjectDescriptor)
         }
       }),
-      { numRuns: 100 },
+      { numRuns: 100 }
     )
   })
 })
@@ -198,22 +198,22 @@ describe('BarcodeScanner - Unit Tests', () => {
     return { getTracks: vi.fn().mockReturnValue([track]) } as unknown as MediaStream
   }
 
-  function setupMediaDevices(cameras: Array<{ deviceId: string; label: string }> = [{ deviceId: 'cam-1', label: 'Camera 1' }]) {
+  function setupMediaDevices(cameras: Array<{ deviceId: string, label: string }> = [{ deviceId: 'cam-1', label: 'Camera 1' }]) {
     const devices = cameras.map(c => ({
       deviceId: c.deviceId,
       kind: 'videoinput' as MediaDeviceKind,
       label: c.label,
       groupId: 'g1',
-      toJSON: () => ({}),
+      toJSON: () => ({})
     }))
 
     Object.defineProperty(navigator, 'mediaDevices', {
       value: {
         getUserMedia: vi.fn().mockImplementation(() => Promise.resolve(createMockStream())),
-        enumerateDevices: vi.fn().mockResolvedValue(devices),
+        enumerateDevices: vi.fn().mockResolvedValue(devices)
       },
       writable: true,
-      configurable: true,
+      configurable: true
     })
   }
 
@@ -232,7 +232,7 @@ describe('BarcodeScanner - Unit Tests', () => {
     Object.defineProperty(HTMLVideoElement.prototype, 'srcObject', {
       set: vi.fn(),
       get: vi.fn().mockReturnValue(null),
-      configurable: true,
+      configurable: true
     })
   })
 
@@ -240,7 +240,7 @@ describe('BarcodeScanner - Unit Tests', () => {
     Object.defineProperty(navigator, 'mediaDevices', {
       value: originalMediaDevices,
       writable: true,
-      configurable: true,
+      configurable: true
     })
     if (originalBarcodeDetector) {
       (globalThis as Record<string, unknown>).BarcodeDetector = originalBarcodeDetector
@@ -259,7 +259,7 @@ describe('BarcodeScanner - Unit Tests', () => {
     setupMediaDevices()
     const wrapper = mount(BarcodeScanner, {
       props: { formats: ['qr_code'], cooldownMs: 5000, showGuide: false, autoStart: false },
-      global: { stubs: { UIcon: true } },
+      global: { stubs: { UIcon: true } }
     })
     expect(wrapper.props('formats')).toEqual(['qr_code'])
     expect(wrapper.props('cooldownMs')).toBe(5000)
@@ -271,9 +271,9 @@ describe('BarcodeScanner - Unit Tests', () => {
   it('emits camera-started when camera activates and camera-stopped when stopped', async () => {
     setupMediaDevices()
     const wrapper = mount(BarcodeScanner, {
-      global: { stubs: { UIcon: true } },
+      global: { stubs: { UIcon: true } }
     })
-    const vm = wrapper.vm as unknown as { startCamera: () => Promise<void>; stopCamera: () => void }
+    const vm = wrapper.vm as unknown as { startCamera: () => Promise<void>, stopCamera: () => void }
     await vm.startCamera()
     await flushPromises()
 
@@ -291,7 +291,7 @@ describe('BarcodeScanner - Unit Tests', () => {
     setupMediaDevices()
     const wrapper = mount(BarcodeScanner, {
       global: { stubs: { UIcon: true } },
-      slots: { guide: '<div class="custom-guide">Custom Guide</div>' },
+      slots: { guide: '<div class="custom-guide">Custom Guide</div>' }
     })
     const vm = wrapper.vm as unknown as { startCamera: () => Promise<void> }
     await vm.startCamera()
@@ -306,7 +306,7 @@ describe('BarcodeScanner - Unit Tests', () => {
     setupMediaDevices()
     const wrapper = mount(BarcodeScanner, {
       global: { stubs: { UIcon: true } },
-      slots: { feedback: '<div class="custom-feedback">Done</div>' },
+      slots: { feedback: '<div class="custom-feedback">Done</div>' }
     })
     expect(wrapper.find('.custom-feedback').exists()).toBe(true)
     wrapper.unmount()
@@ -316,7 +316,7 @@ describe('BarcodeScanner - Unit Tests', () => {
   it('video element is present', async () => {
     setupMediaDevices()
     const wrapper = mount(BarcodeScanner, {
-      global: { stubs: { UIcon: true } },
+      global: { stubs: { UIcon: true } }
     })
     expect(wrapper.find('video').exists()).toBe(true)
     wrapper.unmount()
@@ -326,7 +326,7 @@ describe('BarcodeScanner - Unit Tests', () => {
   it('guide overlay visible when active and no detection', async () => {
     setupMediaDevices()
     const wrapper = mount(BarcodeScanner, {
-      global: { stubs: { UIcon: true } },
+      global: { stubs: { UIcon: true } }
     })
     const vm = wrapper.vm as unknown as { startCamera: () => Promise<void> }
     await vm.startCamera()
@@ -340,7 +340,7 @@ describe('BarcodeScanner - Unit Tests', () => {
   it('exposes startCamera and stopCamera via template ref', () => {
     setupMediaDevices()
     const wrapper = mount(BarcodeScanner, {
-      global: { stubs: { UIcon: true } },
+      global: { stubs: { UIcon: true } }
     })
     const vm = wrapper.vm as unknown as Record<string, unknown>
     expect(typeof vm.startCamera).toBe('function')
@@ -352,10 +352,10 @@ describe('BarcodeScanner - Unit Tests', () => {
   it('shows select dropdown when multiple cameras available', async () => {
     setupMediaDevices([
       { deviceId: 'a', label: 'Front' },
-      { deviceId: 'b', label: 'Rear' },
+      { deviceId: 'b', label: 'Rear' }
     ])
     const wrapper = mount(BarcodeScanner, {
-      global: { stubs: { UIcon: true } },
+      global: { stubs: { UIcon: true } }
     })
     const vm = wrapper.vm as unknown as { startCamera: () => Promise<void> }
     await vm.startCamera()
@@ -370,10 +370,10 @@ describe('BarcodeScanner - Unit Tests', () => {
   it('shows swap button when multiple cameras available', async () => {
     setupMediaDevices([
       { deviceId: 'a', label: 'Front' },
-      { deviceId: 'b', label: 'Rear' },
+      { deviceId: 'b', label: 'Rear' }
     ])
     const wrapper = mount(BarcodeScanner, {
-      global: { stubs: { UIcon: true } },
+      global: { stubs: { UIcon: true } }
     })
     const vm = wrapper.vm as unknown as { startCamera: () => Promise<void> }
     await vm.startCamera()
@@ -387,7 +387,7 @@ describe('BarcodeScanner - Unit Tests', () => {
   it('hides camera selector when only one camera', async () => {
     setupMediaDevices([{ deviceId: 'only', label: 'Only Camera' }])
     const wrapper = mount(BarcodeScanner, {
-      global: { stubs: { UIcon: true } },
+      global: { stubs: { UIcon: true } }
     })
     const vm = wrapper.vm as unknown as { startCamera: () => Promise<void> }
     await vm.startCamera()

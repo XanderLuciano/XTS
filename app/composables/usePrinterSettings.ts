@@ -6,6 +6,7 @@
  */
 import { ref, readonly } from 'vue'
 import { composeLabelElements, elementsToZpl } from '~/utils/label'
+import { extractApiError } from '~/utils/apiError'
 import type { LabelData } from '~/utils/label'
 
 export type PrintMethod = 'server' | 'local'
@@ -62,7 +63,7 @@ export function usePrinterSettings() {
   /**
    * Print a label using the server API (existing remote printer service).
    */
-  async function printViaServer(data: LabelData): Promise<{ success: boolean; error?: string }> {
+  async function printViaServer(data: LabelData): Promise<{ success: boolean, error?: string }> {
     const printerUrl = localStorage.getItem('zebra_printer_url') || ''
     const printerApiKey = localStorage.getItem('zebra_api_key') || ''
 
@@ -80,16 +81,15 @@ export function usePrinterSettings() {
         }
       })
       return { success: true }
-    } catch (error: any) {
-      const message = error?.data?.message || error?.message || 'Server print failed'
-      return { success: false, error: message }
+    } catch (error: unknown) {
+      return { success: false, error: extractApiError(error, 'Server print failed') }
     }
   }
 
   /**
    * Print a label directly to a local USB printer via WebUSB.
    */
-  async function printViaLocal(data: LabelData): Promise<{ success: boolean; error?: string }> {
+  async function printViaLocal(data: LabelData): Promise<{ success: boolean, error?: string }> {
     const { isConnected, printZpl, lastError } = useLocalPrinter()
     const { widthDots, heightDots, load: loadConfig } = useLocalPrinterConfig()
 
@@ -114,7 +114,7 @@ export function usePrinterSettings() {
    * Print using the user's preferred method.
    * Returns result and which method was used.
    */
-  async function print(data: LabelData): Promise<{ success: boolean; method: PrintMethod; error?: string }> {
+  async function print(data: LabelData): Promise<{ success: boolean, method: PrintMethod, error?: string }> {
     const method = settings.value.defaultMethod
 
     if (method === 'local') {

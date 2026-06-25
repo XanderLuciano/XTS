@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import fc from 'fast-check'
 import { InventreeService } from '../../inventree.service'
 import type { AddStockDto } from '~/types/inventree'
@@ -14,7 +14,7 @@ describe('addStock - Routing Logic', () => {
   it('should always query existing stock first and route correctly based on results', async () => {
     /**
      * **Validates: Requirements 1.1, 2.1, 3.1**
-     * 
+     *
      * For any addStock call with a valid part ID and quantity, the service SHALL:
      * 1. First query existing stock items (getStockItems is always called)
      * 2. If existing stock found → addToExistingStock is called with first item's pk
@@ -52,16 +52,16 @@ describe('addStock - Routing Logic', () => {
             )
             expect(addToExistingCall).toBeDefined()
             expect(addToExistingCall![1].body).toEqual({
-              items: [{ pk: existingStock[0].pk, quantity }],
-              notes: notes ?? undefined ?? ''
+              items: [{ pk: existingStock[0]!.pk, quantity }],
+              notes: notes ?? ''
             })
-            
+
             // Verify: Fetch updated stock item was called
             const fetchUpdatedCall = mockApi.mock.calls.find(
               call => call[0].startsWith('/stock/?pk=')
             )
             expect(fetchUpdatedCall).toBeDefined()
-            
+
             // Verify: POST /stock/ is NOT called
             const createNewCall = mockApi.mock.calls.find(
               call => call[0] === '/stock/' && call[1]?.method === 'POST'
@@ -74,7 +74,7 @@ describe('addStock - Routing Logic', () => {
             )
             expect(createNewCall).toBeDefined()
             expect(createNewCall![1].body).toEqual(addStockData)
-            
+
             // Verify: addToExistingStock bulk endpoint is NOT called
             const addToExistingCall = mockApi.mock.calls.find(
               call => call[0] === '/stock/add/'

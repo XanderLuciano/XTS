@@ -11,9 +11,9 @@ export default defineEventHandler(async (event) => {
 
   try {
     console.log('Searching Sandvik for barcode:', barcode)
-    
+
     // Step 1: Search for product
-    const searchResponse = await $fetch('https://www.sandvik.coromant.com/api/productsearch/searchinclassification', {
+    const searchResponse = await $fetch<{ items?: Array<{ Id: string }> }>('https://www.sandvik.coromant.com/api/productsearch/searchinclassification', {
       method: 'POST',
       body: {
         query: barcode,
@@ -37,16 +37,20 @@ export default defineEventHandler(async (event) => {
       throw new Error('Product not found in Sandvik catalog')
     }
 
-    const productId = searchResponse.items[0].Id
+    const firstItem = searchResponse.items[0]
+    if (!firstItem) {
+      throw new Error('Product not found in Sandvik catalog')
+    }
+    const productId = firstItem.Id
     console.log('Found product ID:', productId)
 
     // Step 2: Get full product details
-    const productData = await $fetch(`https://www.sandvik.coromant.com/api/productsearch/product?id=${productId}&unitOfMeasurement=Metric`)
+    const productData = await $fetch<{ product: Record<string, string | undefined> }>(`https://www.sandvik.coromant.com/api/productsearch/product?id=${productId}&unitOfMeasurement=Metric`)
 
     console.log('Product data:', productData)
 
     const product = productData.product
-    
+
     // Build description from key specs
     const descriptionParts = [
       product.PRODDESCR || '',
@@ -58,7 +62,7 @@ export default defineEventHandler(async (event) => {
       `Coating: ${product.COATING}`,
       `Materials: ${product.MaterialsString || ''}`
     ].filter(Boolean)
-    
+
     return {
       success: true,
       data: {

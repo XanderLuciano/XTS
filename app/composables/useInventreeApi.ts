@@ -7,11 +7,11 @@ export const useInventreeApi = () => {
   // Public config provides defaults, localStorage overrides
   let baseURL = config.public.inventreeApiUrl
   let token = config.public.inventreeApiToken
-  
-  if (process.client) {
+
+  if (import.meta.client) {
     const savedUrl = localStorage.getItem('inventree_api_url')
     const savedToken = localStorage.getItem('inventree_api_token')
-    
+
     if (savedUrl) baseURL = savedUrl
     if (savedToken) token = savedToken
   }
@@ -25,5 +25,3 @@ export const useInventreeApi = () => {
 
   return new InventreeService(apiClient)
 }
-
-

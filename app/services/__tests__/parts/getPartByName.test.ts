@@ -16,9 +16,9 @@ describe('getPartByName', () => {
         async (name, mockResponse) => {
           const { mockApi, service } = createMockService()
           mockSuccessResponse(mockApi, mockResponse)
-          
+
           await service.getPartByName(name)
-          
+
           expect(mockApi).toHaveBeenCalledWith('/part/', {
             method: 'GET',
             query: { name }
@@ -37,7 +37,7 @@ describe('getPartByName', () => {
         async (name, errorMessage) => {
           const { mockApi, service } = createMockService()
           const expectedError = mockErrorResponse(mockApi, errorMessage)
-          
+
           await expectErrorPropagation(
             () => service.getPartByName(name),
             expectedError

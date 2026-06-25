@@ -21,7 +21,7 @@ const props = withDefaults(defineProps<BarcodeScannerProps>(), {
   cooldownMs: 3000,
   cameraDeviceId: undefined,
   showGuide: true,
-  autoStart: false,
+  autoStart: false
 })
 
 const emit = defineEmits<{
@@ -40,14 +40,14 @@ const {
   startCamera,
   stopCamera,
   switchCamera,
-  videoRef,
+  videoRef
 } = useScanner({
   formats: props.formats,
   cooldownMs: props.cooldownMs,
   cameraDeviceId: props.cameraDeviceId,
   onDetected: (result: ScanResult) => {
     emit('barcode-detected', result)
-  },
+  }
 })
 
 // Watch composable error state and emit error event
@@ -61,8 +61,7 @@ watch(error, (newError) => {
 watch(isActive, (active) => {
   if (active) {
     emit('camera-started')
-  }
-  else {
+  } else {
     emit('camera-stopped')
   }
 })
@@ -92,8 +91,7 @@ function playBeep() {
     oscillator.start()
     oscillator.stop(ctx.currentTime + 0.12)
     oscillator.onended = () => ctx.close()
-  }
-  catch {
+  } catch {
     // Silently ignore audio errors (e.g. user gesture requirement)
   }
 }
@@ -138,8 +136,7 @@ const displayBoundingBox = computed(() => {
     // Video is wider than element — cropped horizontally
     scale = elemH / videoH
     offsetX = (elemW - videoW * scale) / 2
-  }
-  else {
+  } else {
     // Video is taller than element — cropped vertically
     scale = elemW / videoW
     offsetY = (elemH - videoH * scale) / 2
@@ -149,7 +146,7 @@ const displayBoundingBox = computed(() => {
     x: bb.x * scale + offsetX,
     y: bb.y * scale + offsetY,
     width: bb.width * scale,
-    height: bb.height * scale,
+    height: bb.height * scale
   }
 })
 
@@ -165,8 +162,7 @@ function loadMirrorPrefs(): Record<string, boolean> {
   try {
     const raw = localStorage.getItem(MIRROR_STORAGE_KEY)
     return raw ? JSON.parse(raw) : {}
-  }
-  catch {
+  } catch {
     return {}
   }
 }
@@ -201,7 +197,9 @@ watch(availableCameras, () => {
 async function handleCameraSwap() {
   if (!hasMultipleCameras.value) return
   const nextIndex = (currentCameraIndex.value + 1) % availableCameras.value.length
-  const deviceId = availableCameras.value[nextIndex].deviceId
+  const nextCamera = availableCameras.value[nextIndex]
+  if (!nextCamera) return
+  const deviceId = nextCamera.deviceId
   currentCameraIndex.value = nextIndex
   loadMirrorForCurrentCamera()
   await switchCamera(deviceId)
@@ -222,7 +220,7 @@ async function handleCameraSelect(event: Event) {
 
 defineExpose({
   startCamera,
-  stopCamera,
+  stopCamera
 })
 </script>
 
@@ -267,7 +265,10 @@ defineExpose({
         aria-label="Toggle mirror"
         @click="toggleMirror"
       >
-        <UIcon name="lucide:flip-horizontal-2" class="w-5 h-5" />
+        <UIcon
+          name="lucide:flip-horizontal-2"
+          class="w-5 h-5"
+        />
       </button>
 
       <!-- Mobile camera swap button: overlaid on preview bottom-right -->
@@ -278,7 +279,10 @@ defineExpose({
         aria-label="Switch camera"
         @click="handleCameraSwap"
       >
-        <UIcon name="lucide:refresh-cw" class="w-5 h-5" />
+        <UIcon
+          name="lucide:refresh-cw"
+          class="w-5 h-5"
+        />
       </button>
 
       <!-- Guide overlay: shown when active and no detection -->
@@ -297,14 +301,17 @@ defineExpose({
         class="absolute inset-0 pointer-events-none"
         :class="{ 'scanner-mirrored': isMirrored }"
       >
-        <slot name="overlay" :bounding-box="displayBoundingBox">
+        <slot
+          name="overlay"
+          :bounding-box="displayBoundingBox"
+        >
           <div
             class="scanner-highlight"
             :style="{
               left: `${displayBoundingBox.x}px`,
               top: `${displayBoundingBox.y}px`,
               width: `${displayBoundingBox.width}px`,
-              height: `${displayBoundingBox.height}px`,
+              height: `${displayBoundingBox.height}px`
             }"
           />
         </slot>

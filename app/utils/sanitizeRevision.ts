@@ -7,7 +7,7 @@
  */
 export function sanitizeRevision(input: string): string {
   // Strip common prefixes
-  let rev = input.replace(/^rev\s*/i, '').trim()
+  const rev = input.replace(/^rev\s*/i, '').trim()
 
   if (!rev) return ''
 

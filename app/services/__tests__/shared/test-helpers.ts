@@ -1,5 +1,5 @@
 import fc from 'fast-check'
-import type { Part, StockItem, CreatePartDto } from '~/types/inventree'
+import type { CreatePartDto } from '~/types/inventree'
 
 /**
  * Shared test arbitraries for InventreeService tests
@@ -42,6 +42,7 @@ export const stockItemArb = fc.record({
   location: fc.constant(null),
   serial: fc.constant(null),
   batch: fc.constant(null),
+  barcode_hash: fc.constant(''),
   notes: fc.string()
 })
 
@@ -60,10 +61,10 @@ export const createPartDtoArb: fc.Arbitrary<CreatePartDto> = fc.record({
 }) as fc.Arbitrary<CreatePartDto>
 
 // API response format generators
-export const arrayResponseArb = <T>(itemArb: fc.Arbitrary<T>) => 
+export const arrayResponseArb = <T>(itemArb: fc.Arbitrary<T>) =>
   fc.array(itemArb, { minLength: 0, maxLength: 10 })
 
-export const paginatedResponseArb = <T>(itemArb: fc.Arbitrary<T>) => 
+export const paginatedResponseArb = <T>(itemArb: fc.Arbitrary<T>) =>
   fc.record({
     results: fc.array(itemArb, { minLength: 0, maxLength: 10 }),
     count: fc.integer({ min: 0, max: 100 }),

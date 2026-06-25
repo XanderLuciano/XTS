@@ -16,9 +16,9 @@ describe('searchParts', () => {
         async (query, mockResponse) => {
           const { mockApi, service } = createMockService()
           mockSuccessResponse(mockApi, mockResponse)
-          
+
           await service.searchParts(query)
-          
+
           expect(mockApi).toHaveBeenCalledWith(`/part/?search=${encodeURIComponent(query)}`)
         }
       ),
@@ -34,7 +34,7 @@ describe('searchParts', () => {
         async (query, errorMessage) => {
           const { mockApi, service } = createMockService()
           const expectedError = mockErrorResponse(mockApi, errorMessage)
-          
+
           await expectErrorPropagation(
             () => service.searchParts(query),
             expectedError

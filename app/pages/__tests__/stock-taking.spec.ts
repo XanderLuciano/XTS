@@ -99,9 +99,9 @@ describe('Stock Taking Page Structure', () => {
    * **Validates: Requirement 5.1**
    */
   it('should have Escape key handler for undo last', () => {
-    expect(pageContent).toContain("event.key === 'Escape'")
+    expect(pageContent).toContain('event.key === \'Escape\'')
     expect(pageContent).toContain('handleUndoLast')
-    expect(pageContent).toContain("window.addEventListener('keydown'")
+    expect(pageContent).toContain('window.addEventListener(\'keydown\'')
   })
 
   /**

@@ -6,29 +6,23 @@ export default defineNuxtConfig({
     'nuxt-mcp-dev'
   ],
 
-  ui: {
-    colors: {
-      primary: 'blue',
-      secondary: 'gray',
-      success: 'green',
-      warning: 'orange',
-      error: 'red',
-      info: 'cyan',
-      neutral: 'slate',
-      blue: 'blue',
-      purple: 'purple',
-      pink: 'pink',
-      yellow: 'yellow',
-      teal: 'teal',
-      indigo: 'indigo'
-    }
-  },
-
   devtools: {
     enabled: true
   },
 
   css: ['~/assets/css/main.css'],
+
+  runtimeConfig: {
+    public: {
+      appName: 'XTS Inventory',
+      appTagline: 'Quick and simple shop floor interface',
+      inventreeApiUrl: '',
+      inventreeApiToken: '',
+      useMockApi: false,
+      zebraPrinterUrl: '',
+      zebraApiKey: ''
+    }
+  },
 
   routeRules: {
     // Don't prerender — runtime config (API URL, token) must come from
@@ -43,18 +37,6 @@ export default defineNuxtConfig({
         commaDangle: 'never',
         braceStyle: '1tbs'
       }
-    }
-  },
-
-  runtimeConfig: {
-    public: {
-      appName: 'XTS Inventory',
-      appTagline: 'Quick and simple shop floor interface',
-      inventreeApiUrl: '',
-      inventreeApiToken: '',
-      useMockApi: false,
-      zebraPrinterUrl: '',
-      zebraApiKey: ''
     }
   }
 })

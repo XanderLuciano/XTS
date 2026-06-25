@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { composeLabelElements, elementsToZpl, generateTestLabelData } from '~/utils/label'
+import { extractApiError } from '~/utils/apiError'
 
 const serverUrl = ref('')
 const apiToken = ref('')
@@ -30,7 +31,6 @@ const {
   DEFAULT_CONFIG: defaultLabelConfig,
   load: loadLabelConfig,
   setConfig: setLabelConfig,
-  resetToDefault: resetLabelConfig,
   toConfigZpl,
   calibrateZpl
 } = useLocalPrinterConfig()
@@ -110,7 +110,9 @@ const isCalibrating = ref(false)
 async function calibratePrinter() {
   if (!localPrinterConnected.value) {
     localPrinterMessage.value = '✗ No printer connected. Connect a printer first to calibrate.'
-    setTimeout(() => { localPrinterMessage.value = '' }, 5000)
+    setTimeout(() => {
+      localPrinterMessage.value = ''
+    }, 5000)
     return
   }
 
@@ -126,11 +128,13 @@ async function calibratePrinter() {
     } else {
       localPrinterMessage.value = `✗ Calibration failed: ${localPrinterError.value || 'Unknown error'}`
     }
-  } catch (error: any) {
-    localPrinterMessage.value = `✗ Calibration failed: ${error.message}`
+  } catch (error) {
+    localPrinterMessage.value = `✗ Calibration failed: ${extractApiError(error, 'Unknown error')}`
   } finally {
     isCalibrating.value = false
-    setTimeout(() => { localPrinterMessage.value = '' }, 5000)
+    setTimeout(() => {
+      localPrinterMessage.value = ''
+    }, 5000)
   }
 }
 
@@ -169,9 +173,9 @@ const testConnection = async () => {
         Authorization: `Token ${apiToken.value}`
       }
     })
-    savedMessage.value = `✓ Connection successful! Authenticated as: ${(response as any).username}`
-  } catch (error: any) {
-    savedMessage.value = `✗ Connection failed: ${error.message}`
+    savedMessage.value = `✓ Connection successful! Authenticated as: ${(response as { username?: string }).username}`
+  } catch (error) {
+    savedMessage.value = `✗ Connection failed: ${extractApiError(error, 'Unknown error')}`
   }
 }
 
@@ -197,8 +201,8 @@ const testPrinter = async () => {
     localStorage.setItem('zebra_api_key', zebraApiKey.value)
 
     zebraMessage.value = '✓ Printer service is reachable! Configuration saved.'
-  } catch (error: any) {
-    zebraMessage.value = `✗ Printer connection failed: ${error.message}`
+  } catch (error) {
+    zebraMessage.value = `✗ Printer connection failed: ${extractApiError(error, 'Unknown error')}`
   }
 }
 
@@ -227,12 +231,13 @@ const testPrintServer = async () => {
 
     serverTestMessage.value = '✓ Test label sent to server printer!'
     toast.add({ title: 'Test label printed', description: 'Sent via server printer', color: 'success' })
-  } catch (error: any) {
-    const message = error?.data?.message || error?.message || 'Unknown error'
-    serverTestMessage.value = `✗ Test print failed: ${message}`
+  } catch (error) {
+    serverTestMessage.value = `✗ Test print failed: ${extractApiError(error, 'Unknown error')}`
   } finally {
     isTestingServer.value = false
-    setTimeout(() => { serverTestMessage.value = '' }, 5000)
+    setTimeout(() => {
+      serverTestMessage.value = ''
+    }, 5000)
   }
 }
 
@@ -245,20 +250,26 @@ const handleConnectLocal = async () => {
   } else if (localPrinterError.value) {
     localPrinterMessage.value = `✗ ${localPrinterError.value}`
   }
-  setTimeout(() => { localPrinterMessage.value = '' }, 5000)
+  setTimeout(() => {
+    localPrinterMessage.value = ''
+  }, 5000)
 }
 
 const handleDisconnectLocal = async () => {
   await disconnectLocalPrinter()
   localPrinterMessage.value = '✓ Disconnected from local printer'
-  setTimeout(() => { localPrinterMessage.value = '' }, 5000)
+  setTimeout(() => {
+    localPrinterMessage.value = ''
+  }, 5000)
 }
 
 // --- Test Print (Local USB) ---
 const testPrintLocal = async () => {
   if (!localPrinterConnected.value) {
     localPrinterMessage.value = '✗ No local printer connected. Connect a printer first.'
-    setTimeout(() => { localPrinterMessage.value = '' }, 5000)
+    setTimeout(() => {
+      localPrinterMessage.value = ''
+    }, 5000)
     return
   }
 
@@ -277,11 +288,13 @@ const testPrintLocal = async () => {
     } else {
       localPrinterMessage.value = `✗ Print failed: ${localPrinterError.value || 'Unknown error'}`
     }
-  } catch (error: any) {
-    localPrinterMessage.value = `✗ Test print failed: ${error.message}`
+  } catch (error) {
+    localPrinterMessage.value = `✗ Test print failed: ${extractApiError(error, 'Unknown error')}`
   } finally {
     isTestingLocal.value = false
-    setTimeout(() => { localPrinterMessage.value = '' }, 5000)
+    setTimeout(() => {
+      localPrinterMessage.value = ''
+    }, 5000)
   }
 }
 
@@ -320,14 +333,20 @@ onMounted(() => {
 <template>
   <div class="container mx-auto p-6 max-w-3xl">
     <div class="mb-8">
-      <h1 class="text-2xl font-bold mb-2">Configuration</h1>
-      <p class="text-gray-600 dark:text-gray-400">Configure InvenTree server connection and printer settings</p>
+      <h1 class="text-2xl font-bold mb-2">
+        Configuration
+      </h1>
+      <p class="text-gray-600 dark:text-gray-400">
+        Configure InvenTree server connection and printer settings
+      </p>
     </div>
 
     <!-- InvenTree Server Settings -->
     <UCard>
       <template #header>
-        <h2 class="text-lg font-semibold">Server Settings</h2>
+        <h2 class="text-lg font-semibold">
+          Server Settings
+        </h2>
       </template>
 
       <div class="space-y-4">
@@ -336,23 +355,37 @@ onMounted(() => {
             label="InvenTree API URL"
             description="The base URL of your InvenTree API (e.g., http://localhost/api)"
           >
-            <UInput v-model="serverUrl" placeholder="http://localhost/api" size="lg" />
+            <UInput
+              v-model="serverUrl"
+              placeholder="http://localhost/api"
+              size="lg"
+            />
           </UFormField>
 
           <UFormField
             label="API Token"
             description="Your InvenTree API authentication token"
           >
-            <UInput v-model="apiToken" type="password" placeholder="inv-..." size="lg" />
+            <UInput
+              v-model="apiToken"
+              type="password"
+              placeholder="inv-..."
+              size="lg"
+            />
           </UFormField>
         </div>
 
         <!-- How to get your token -->
         <div class="p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 text-sm">
           <div class="flex items-start gap-2">
-            <UIcon name="i-lucide-info" class="w-4 h-4 shrink-0 mt-0.5" />
+            <UIcon
+              name="i-lucide-info"
+              class="w-4 h-4 shrink-0 mt-0.5"
+            />
             <div>
-              <p class="font-medium mb-1">How to Get Your API Token</p>
+              <p class="font-medium mb-1">
+                How to Get Your API Token
+              </p>
               <ul class="list-disc list-inside space-y-0.5 text-xs">
                 <li>Log in to your InvenTree server</li>
                 <li>Go to Settings → User Settings → API</li>
@@ -363,17 +396,29 @@ onMounted(() => {
           </div>
         </div>
 
-        <div v-if="savedMessage" class="p-4 rounded-lg" :class="savedMessage.startsWith('✓') ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300' : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300'">
+        <div
+          v-if="savedMessage"
+          class="p-4 rounded-lg"
+          :class="savedMessage.startsWith('✓') ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300' : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300'"
+        >
           {{ savedMessage }}
         </div>
       </div>
 
       <template #footer>
         <div class="flex gap-3 justify-end">
-          <UButton @click="testConnection" variant="outline" icon="i-lucide-shield-check">
+          <UButton
+            variant="outline"
+            icon="i-lucide-shield-check"
+            @click="testConnection"
+          >
             Test Connection
           </UButton>
-          <UButton @click="saveConfig" icon="i-lucide-save" size="lg">
+          <UButton
+            icon="i-lucide-save"
+            size="lg"
+            @click="saveConfig"
+          >
             Save Configuration
           </UButton>
         </div>
@@ -384,8 +429,13 @@ onMounted(() => {
     <UCard class="mt-6">
       <template #header>
         <div class="flex items-center gap-2">
-          <UIcon name="i-lucide-printer" class="w-5 h-5" />
-          <h2 class="text-lg font-semibold">Default Printer</h2>
+          <UIcon
+            name="i-lucide-printer"
+            class="w-5 h-5"
+          />
+          <h2 class="text-lg font-semibold">
+            Default Printer
+          </h2>
         </div>
       </template>
 
@@ -406,9 +456,15 @@ onMounted(() => {
           />
         </UFormField>
 
-        <div v-if="printerSettings.defaultMethod === 'local' && !localPrinterSupported" class="p-3 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300 text-sm">
+        <div
+          v-if="printerSettings.defaultMethod === 'local' && !localPrinterSupported"
+          class="p-3 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300 text-sm"
+        >
           <div class="flex items-center gap-2">
-            <UIcon name="i-lucide-alert-circle" class="w-4 h-4 shrink-0" />
+            <UIcon
+              name="i-lucide-alert-circle"
+              class="w-4 h-4 shrink-0"
+            />
             <span>WebUSB is not supported in this browser. Local printing requires Chrome or Edge.</span>
           </div>
         </div>
@@ -419,8 +475,13 @@ onMounted(() => {
     <UCard class="mt-6">
       <template #header>
         <div class="flex items-center gap-2">
-          <UIcon name="i-lucide-server" class="w-5 h-5" />
-          <h2 class="text-lg font-semibold">Server Printer (Remote API)</h2>
+          <UIcon
+            name="i-lucide-server"
+            class="w-5 h-5"
+          />
+          <h2 class="text-lg font-semibold">
+            Server Printer (Remote API)
+          </h2>
         </div>
       </template>
 
@@ -429,34 +490,64 @@ onMounted(() => {
           label="Printer Service URL"
           description="The URL of your zebra-label-printer HTTP API (e.g., http://localhost:3420)"
         >
-          <UInput v-model="zebraPrinterUrl" placeholder="http://localhost:3420" size="lg" />
+          <UInput
+            v-model="zebraPrinterUrl"
+            placeholder="http://localhost:3420"
+            size="lg"
+          />
         </UFormField>
 
         <UFormField
           label="Printer API Key"
           description="API key for the printer service (leave empty if not configured)"
         >
-          <UInput v-model="zebraApiKey" type="password" placeholder="Optional" size="lg" />
+          <UInput
+            v-model="zebraApiKey"
+            type="password"
+            placeholder="Optional"
+            size="lg"
+          />
         </UFormField>
 
-        <div v-if="zebraMessage" class="p-4 rounded-lg" :class="zebraMessage.startsWith('✓') ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300' : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300'">
+        <div
+          v-if="zebraMessage"
+          class="p-4 rounded-lg"
+          :class="zebraMessage.startsWith('✓') ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300' : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300'"
+        >
           {{ zebraMessage }}
         </div>
 
-        <div v-if="serverTestMessage" class="p-4 rounded-lg" :class="serverTestMessage.startsWith('✓') ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300' : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300'">
+        <div
+          v-if="serverTestMessage"
+          class="p-4 rounded-lg"
+          :class="serverTestMessage.startsWith('✓') ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300' : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300'"
+        >
           {{ serverTestMessage }}
         </div>
       </div>
 
       <template #footer>
         <div class="flex gap-3 justify-end">
-          <UButton @click="testPrinter" variant="outline" icon="i-lucide-wifi">
+          <UButton
+            variant="outline"
+            icon="i-lucide-wifi"
+            @click="testPrinter"
+          >
             Test Connection
           </UButton>
-          <UButton @click="testPrintServer" variant="outline" icon="i-lucide-printer" :loading="isTestingServer">
+          <UButton
+            variant="outline"
+            icon="i-lucide-printer"
+            :loading="isTestingServer"
+            @click="testPrintServer"
+          >
             Print Test Label
           </UButton>
-          <UButton @click="saveZebraConfig" icon="i-lucide-save" size="lg">
+          <UButton
+            icon="i-lucide-save"
+            size="lg"
+            @click="saveZebraConfig"
+          >
             Save Printer Config
           </UButton>
         </div>
@@ -467,8 +558,13 @@ onMounted(() => {
     <UCard class="mt-6">
       <template #header>
         <div class="flex items-center gap-2">
-          <UIcon name="i-lucide-usb" class="w-5 h-5" />
-          <h2 class="text-lg font-semibold">Local USB Printer</h2>
+          <UIcon
+            name="i-lucide-usb"
+            class="w-5 h-5"
+          />
+          <h2 class="text-lg font-semibold">
+            Local USB Printer
+          </h2>
         </div>
       </template>
 
@@ -499,16 +595,25 @@ onMounted(() => {
           </div>
         </div>
 
-        <div v-if="localPrinterMessage" class="p-4 rounded-lg" :class="localPrinterMessage.startsWith('✓') ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300' : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300'">
+        <div
+          v-if="localPrinterMessage"
+          class="p-4 rounded-lg"
+          :class="localPrinterMessage.startsWith('✓') ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300' : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300'"
+        >
           {{ localPrinterMessage }}
         </div>
 
         <!-- Windows driver note -->
         <div class="p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 text-sm">
           <div class="flex items-start gap-2">
-            <UIcon name="i-lucide-info" class="w-4 h-4 shrink-0 mt-0.5" />
+            <UIcon
+              name="i-lucide-info"
+              class="w-4 h-4 shrink-0 mt-0.5"
+            />
             <div>
-              <p class="font-medium mb-1">Setup Notes</p>
+              <p class="font-medium mb-1">
+                Setup Notes
+              </p>
               <ul class="list-disc list-inside space-y-0.5 text-xs">
                 <li>On Windows, the printer may need the WinUSB driver (use Zadig to switch)</li>
                 <li>The browser will remember your printer selection after first pairing</li>
@@ -522,38 +627,38 @@ onMounted(() => {
       <template #footer>
         <div class="flex gap-3 justify-end">
           <UButton
-            @click="openLabelConfig"
             variant="outline"
             icon="i-lucide-ruler"
             :disabled="!localPrinterSupported"
+            @click="openLabelConfig"
           >
             Configure Label
           </UButton>
           <UButton
             v-if="localPrinterConnected"
-            @click="handleDisconnectLocal"
             variant="outline"
             color="error"
             icon="i-lucide-unplug"
+            @click="handleDisconnectLocal"
           >
             Disconnect
           </UButton>
           <UButton
             v-else
-            @click="handleConnectLocal"
             variant="outline"
             icon="i-lucide-plug"
             :loading="localPrinterConnecting"
             :disabled="!localPrinterSupported"
+            @click="handleConnectLocal"
           >
             Connect Printer
           </UButton>
           <UButton
-            @click="testPrintLocal"
             variant="outline"
             icon="i-lucide-printer"
             :loading="isTestingLocal"
             :disabled="!localPrinterConnected"
+            @click="testPrintLocal"
           >
             Print Test Label
           </UButton>
@@ -564,14 +669,20 @@ onMounted(() => {
     <!-- Feature Flags -->
     <UCard class="mt-6">
       <template #header>
-        <h2 class="text-lg font-semibold">Feature Flags</h2>
+        <h2 class="text-lg font-semibold">
+          Feature Flags
+        </h2>
       </template>
 
       <div class="space-y-4">
         <div class="flex items-center justify-between">
           <div>
-            <p class="font-medium text-sm">User Profile Switcher</p>
-            <p class="text-xs text-muted">Show the top navbar with user profile dropdown</p>
+            <p class="font-medium text-sm">
+              User Profile Switcher
+            </p>
+            <p class="text-xs text-muted">
+              Show the top navbar with user profile dropdown
+            </p>
           </div>
           <USwitch
             :model-value="flags.userProfileSwitcher"
@@ -582,7 +693,11 @@ onMounted(() => {
     </UCard>
 
     <!-- Label Config Modal -->
-    <UModal v-model:open="labelConfigOpen" title="Configure Label Size" description="Set the label dimensions for your local USB printer. Applying will send the configuration directly to the connected printer.">
+    <UModal
+      v-model:open="labelConfigOpen"
+      title="Configure Label Size"
+      description="Set the label dimensions for your local USB printer. Applying will send the configuration directly to the connected printer."
+    >
       <template #body>
         <div class="space-y-5">
           <div class="grid grid-cols-2 gap-4">
@@ -620,16 +735,25 @@ onMounted(() => {
 
           <div class="p-3 rounded-lg bg-gray-50 dark:bg-gray-800 text-sm">
             <div class="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-              <UIcon name="i-lucide-info" class="w-4 h-4 shrink-0" />
+              <UIcon
+                name="i-lucide-info"
+                class="w-4 h-4 shrink-0"
+              />
               <span>
                 Computed size: <strong>{{ Math.round(labelConfigForm.widthInches * labelConfigForm.dpi) }}</strong> × <strong>{{ Math.round(labelConfigForm.heightInches * labelConfigForm.dpi) }}</strong> dots
               </span>
             </div>
           </div>
 
-          <div v-if="!localPrinterConnected" class="p-3 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300 text-sm">
+          <div
+            v-if="!localPrinterConnected"
+            class="p-3 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300 text-sm"
+          >
             <div class="flex items-center gap-2">
-              <UIcon name="i-lucide-alert-circle" class="w-4 h-4 shrink-0" />
+              <UIcon
+                name="i-lucide-alert-circle"
+                class="w-4 h-4 shrink-0"
+              />
               <span>No printer connected. Config will be saved locally but not sent to the printer until you connect one.</span>
             </div>
           </div>
@@ -639,26 +763,39 @@ onMounted(() => {
       <template #footer>
         <div class="flex justify-between w-full">
           <div class="flex gap-2">
-            <UButton @click="resetLabelConfigForm" variant="ghost" color="neutral" size="sm">
+            <UButton
+              variant="ghost"
+              color="neutral"
+              size="sm"
+              @click="resetLabelConfigForm"
+            >
               Reset to Default
             </UButton>
             <UButton
-              @click="calibratePrinter"
               variant="outline"
               color="neutral"
               size="sm"
               icon="i-lucide-scan-line"
               :loading="isCalibrating"
               :disabled="!localPrinterConnected"
+              @click="calibratePrinter"
             >
               Calibrate Sensor
             </UButton>
           </div>
           <div class="flex gap-3">
-            <UButton @click="labelConfigOpen = false" variant="outline" color="neutral">
+            <UButton
+              variant="outline"
+              color="neutral"
+              @click="labelConfigOpen = false"
+            >
               Cancel
             </UButton>
-            <UButton @click="applyLabelConfig" icon="i-lucide-send" :loading="isSendingConfig">
+            <UButton
+              icon="i-lucide-send"
+              :loading="isSendingConfig"
+              @click="applyLabelConfig"
+            >
               {{ localPrinterConnected ? 'Apply & Send to Printer' : 'Save Config' }}
             </UButton>
           </div>

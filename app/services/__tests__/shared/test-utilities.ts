@@ -39,13 +39,13 @@ export async function expectErrorPropagation(
   expectedError: Error
 ) {
   let thrownError: Error | null = null
-  
+
   try {
     await methodCall()
   } catch (error) {
     thrownError = error as Error
   }
-  
+
   expect(thrownError).toBeDefined()
   expect(thrownError).toBe(expectedError)
   expect(thrownError!.message).toBe(expectedError.message)

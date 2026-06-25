@@ -10,7 +10,7 @@ import { createMockService, mockSuccessResponse, mockErrorResponse, expectErrorP
 describe('checkPartExists', () => {
   it('should return exists:true with field:IPN for any non-empty parts array', async () => {
     const nonEmptyPartsArb = fc.array(partArb, { minLength: 1, maxLength: 10 })
-    
+
     await fc.assert(
       fc.asyncProperty(
         stringArb,
@@ -19,9 +19,9 @@ describe('checkPartExists', () => {
         async (ipn, name, mockParts) => {
           const { mockApi, service } = createMockService()
           mockSuccessResponse(mockApi, mockParts)
-          
+
           const result = await service.checkPartExists(ipn, name)
-          
+
           expect(result).toEqual({ exists: true, field: 'IPN' })
         }
       ),
@@ -37,9 +37,9 @@ describe('checkPartExists', () => {
         async (ipn, name) => {
           const { mockApi, service } = createMockService()
           mockSuccessResponse(mockApi, [])
-          
+
           const result = await service.checkPartExists(ipn, name)
-          
+
           expect(result).toEqual({ exists: false })
         }
       ),
@@ -56,7 +56,7 @@ describe('checkPartExists', () => {
         async (ipn, name, errorMessage) => {
           const { mockApi, service } = createMockService()
           const expectedError = mockErrorResponse(mockApi, errorMessage)
-          
+
           await expectErrorPropagation(
             () => service.checkPartExists(ipn, name),
             expectedError

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import * as fc from 'fast-check'
 
 // Feature: initial-stock-quantity-scanner, Property 1: Quantity input visibility matches checkbox state
@@ -28,7 +28,7 @@ describe('Scan Stock - Property Tests', () => {
         const finalVisibility = createStock
         expect(finalVisibility).toBe(createStock)
       }),
-      { numRuns: 100 },
+      { numRuns: 100 }
     )
   })
 
@@ -46,20 +46,20 @@ describe('Scan Stock - Property Tests', () => {
 
         expect(constrainedValue).toBeGreaterThanOrEqual(1)
       }),
-      { numRuns: 100 },
+      { numRuns: 100 }
     )
   })
 })
 
 describe('Scan Stock - Unit Tests', () => {
   // Static verification: scan.vue declares the createStock reactive state that controls visibility
-  it('scan.vue declares createStock ref that defaults to false', async () => {
+  it('scan.vue declares createStock ref that defaults to true', async () => {
     const fs = await import('fs')
     const path = await import('path')
     const content = fs.readFileSync(path.resolve(__dirname, '../scan.vue'), 'utf-8')
 
-    // createStock ref exists and defaults to false (controls quantity input visibility)
-    expect(content).toContain('const createStock = ref(false)')
+    // createStock ref exists and defaults to true (controls quantity input visibility)
+    expect(content).toContain('const createStock = ref(true)')
 
     // stockQuantity ref exists and defaults to 1
     expect(content).toContain('const stockQuantity = ref(1)')
@@ -98,7 +98,7 @@ describe('Scan Stock - Property Tests - Property 3', () => {
 
     fc.assert(
       fc.property(checkboxStateArb, partCreationSucceedsArb, partPkArb, quantityArb,
-        (checkboxChecked, partSucceeds, partPk, quantity) => {
+        (checkboxChecked, partSucceeds, _partPk, _quantity) => {
           let addStockCalled = false
 
           // Simulate createPart logic from scan.vue:
@@ -116,9 +116,9 @@ describe('Scan Stock - Property Tests - Property 3', () => {
           // Property: addStock is called if and only if checkbox is checked AND part creation succeeds
           const expectedCall = checkboxChecked && partSucceeds
           expect(addStockCalled).toBe(expectedCall)
-        },
+        }
       ),
-      { numRuns: 100 },
+      { numRuns: 100 }
     )
   })
 })
@@ -144,7 +144,7 @@ describe('Scan Stock - Unit Tests - Property 3', () => {
     const createPartFnMatch = content.match(/const createPart = async \(\) => \{([\s\S]*?)\n\}\n/)
     expect(createPartFnMatch).toBeTruthy()
 
-    const createPartBody = createPartFnMatch![1]
+    const createPartBody = createPartFnMatch![1]!
 
     // createStock check comes AFTER createPart call (part must succeed first)
     const createPartCallIndex = createPartBody.indexOf('inventree.createPart(partData)')
@@ -159,7 +159,6 @@ describe('Scan Stock - Unit Tests - Property 3', () => {
   })
 })
 
-
 // Feature: initial-stock-quantity-scanner, Property 4: Successful stock creation passes correct quantity and shows toasts
 describe('Scan Stock - Property Tests - Property 4', () => {
   // Feature: initial-stock-quantity-scanner, Property 4: Successful stock creation passes correct quantity and shows toasts
@@ -171,8 +170,8 @@ describe('Scan Stock - Property Tests - Property 4', () => {
     fc.assert(
       fc.property(quantityArb, partPkArb, (quantity, partPk) => {
         // Track addStock arguments and toast calls
-        let addStockArgs: { part: number; quantity: number; notes: string } | null = null
-        const toastCalls: Array<{ title: string; description?: string; color: string }> = []
+        let addStockArgs: { part: number, quantity: number, notes: string } | null = null
+        const toastCalls: Array<{ title: string, description?: string, color: string }> = []
 
         // Simulate the successful createPart flow from scan.vue:
         // 1. Part creation succeeds — show part success toast
@@ -182,14 +181,14 @@ describe('Scan Stock - Property Tests - Property 4', () => {
         addStockArgs = {
           part: partPk,
           quantity: quantity,
-          notes: 'Initial stock created with part',
+          notes: 'Initial stock created with part'
         }
 
         // 3. addStock succeeds — show stock success toast with quantity in description
         toastCalls.push({
           title: 'Initial stock added',
           description: `${quantity} units`,
-          color: 'success',
+          color: 'success'
         })
 
         // Property assertions:
@@ -200,13 +199,13 @@ describe('Scan Stock - Property Tests - Property 4', () => {
 
         // Both toasts are shown
         expect(toastCalls).toHaveLength(2)
-        expect(toastCalls[0].title).toBe('Part created successfully')
-        expect(toastCalls[0].color).toBe('success')
-        expect(toastCalls[1].title).toBe('Initial stock added')
-        expect(toastCalls[1].description).toBe(`${quantity} units`)
-        expect(toastCalls[1].color).toBe('success')
+        expect(toastCalls[0]!.title).toBe('Part created successfully')
+        expect(toastCalls[0]!.color).toBe('success')
+        expect(toastCalls[1]!.title).toBe('Initial stock added')
+        expect(toastCalls[1]!.description).toBe(`${quantity} units`)
+        expect(toastCalls[1]!.color).toBe('success')
       }),
-      { numRuns: 100 },
+      { numRuns: 100 }
     )
   })
 })
@@ -220,11 +219,11 @@ describe('Scan Stock - Unit Tests - Property 4', () => {
     const content = fs.readFileSync(path.resolve(__dirname, '../scan.vue'), 'utf-8')
 
     // Part success toast is present
-    expect(content).toContain("title: 'Part created successfully'")
-    expect(content).toContain("color: 'success'")
+    expect(content).toContain('title: \'Part created successfully\'')
+    expect(content).toContain('color: \'success\'')
 
     // Stock success toast includes quantity in description
-    expect(content).toContain("title: 'Initial stock added'")
+    expect(content).toContain('title: \'Initial stock added\'')
     expect(content).toContain('units')
 
     // Stock data construction uses stockQuantity.value
@@ -234,10 +233,9 @@ describe('Scan Stock - Unit Tests - Property 4', () => {
     expect(content).toContain('part: response.pk')
 
     // The notes field is set correctly
-    expect(content).toContain("notes: 'Initial stock created with part'")
+    expect(content).toContain('notes: \'Initial stock created with part\'')
   })
 })
-
 
 // Feature: initial-stock-quantity-scanner, Property 5: Stock controls reset on every modal open
 describe('Scan Stock - Property Tests - Property 5', () => {
@@ -247,24 +245,24 @@ describe('Scan Stock - Property Tests - Property 5', () => {
     const sessionArb = fc.array(
       fc.record({
         checked: fc.boolean(),
-        quantity: fc.integer({ min: 1, max: 10000 }),
+        quantity: fc.integer({ min: 1, max: 10000 })
       }),
-      { minLength: 1, maxLength: 10 },
+      { minLength: 1, maxLength: 10 }
     )
 
     fc.assert(
       fc.property(sessionArb, (sessions) => {
         // Simulate the reactive state — start dirty to prove reset works
-        let createStock = true
+        let createStock = false
         let stockQuantity = 999
 
         for (const session of sessions) {
           // Modal opens → lookupProduct resets state before isModalOpen = true
-          createStock = false
+          createStock = true
           stockQuantity = 1
 
           // Assert: after reset, controls are at defaults
-          expect(createStock).toBe(false)
+          expect(createStock).toBe(true)
           expect(stockQuantity).toBe(1)
 
           // User modifies controls during the session
@@ -274,7 +272,7 @@ describe('Scan Stock - Property Tests - Property 5', () => {
           // Modal closes (submit or cancel) — state is now "dirty"
         }
       }),
-      { numRuns: 100 },
+      { numRuns: 100 }
     )
   })
 })
@@ -294,11 +292,11 @@ describe('Scan Stock - Unit Tests - Property 5', () => {
     const lookupBody = lookupMatch![0]
 
     // The reset lines must exist inside lookupProduct
-    expect(lookupBody).toContain('createStock.value = false')
+    expect(lookupBody).toContain('createStock.value = true')
     expect(lookupBody).toContain('stockQuantity.value = 1')
 
     // The resets must come BEFORE isModalOpen.value = true
-    const resetCheckboxIndex = lookupBody.indexOf('createStock.value = false')
+    const resetCheckboxIndex = lookupBody.indexOf('createStock.value = true')
     const resetQuantityIndex = lookupBody.indexOf('stockQuantity.value = 1')
     const modalOpenIndex = lookupBody.indexOf('isModalOpen.value = true')
 

@@ -19,7 +19,7 @@ const buildQty = ref(1)
 const isEditing = ref(false)
 const editingQuantities = ref<Map<number, number>>(new Map())
 const isSavingEdit = ref(false)
-const pendingAdditions = ref<{ part: Part; quantity: number }[]>([])
+const pendingAdditions = ref<{ part: Part, quantity: number }[]>([])
 const pendingDeletions = ref<Set<number>>(new Set())
 
 // Assembly detail editing
@@ -221,10 +221,10 @@ const newAssembly = ref<CreateAssemblyDto>({
   category: null
 })
 const showAdvancedOptions = ref(false)
-const categories = ref<{ pk: number; name: string }[]>([])
+const categories = ref<{ pk: number, name: string }[]>([])
 const isLoadingCategories = ref(false)
 const printLabel = ref(false)
-const pendingBomItems = ref<{ part: Part; quantity: number }[]>([])
+const pendingBomItems = ref<{ part: Part, quantity: number }[]>([])
 const isCreating = ref(false)
 
 // Shared search for create mode
@@ -406,8 +406,12 @@ onMounted(() => {
   <div class="container mx-auto p-6 max-w-6xl">
     <!-- Header -->
     <div class="mb-6">
-      <h1 class="text-2xl font-bold mb-1">Bill of Materials</h1>
-      <p class="text-sm text-gray-600 dark:text-gray-400">Manage assemblies and their component requirements</p>
+      <h1 class="text-2xl font-bold mb-1">
+        Bill of Materials
+      </h1>
+      <p class="text-sm text-gray-600 dark:text-gray-400">
+        Manage assemblies and their component requirements
+      </p>
     </div>
 
     <!-- Tabs -->
@@ -438,19 +442,33 @@ onMounted(() => {
         <div>
           <UCard>
             <template #header>
-              <h3 class="font-semibold text-sm">Assemblies</h3>
+              <h3 class="font-semibold text-sm">
+                Assemblies
+              </h3>
             </template>
 
-            <div v-if="isLoadingAssemblies" class="text-center py-4 text-gray-500">
-              <UIcon name="i-lucide-loader-2" class="w-4 h-4 animate-spin inline-block mr-1" />
+            <div
+              v-if="isLoadingAssemblies"
+              class="text-center py-4 text-gray-500"
+            >
+              <UIcon
+                name="i-lucide-loader-2"
+                class="w-4 h-4 animate-spin inline-block mr-1"
+              />
               Loading...
             </div>
 
-            <div v-else-if="assemblies.length === 0" class="text-center py-4 text-gray-500 text-sm">
+            <div
+              v-else-if="assemblies.length === 0"
+              class="text-center py-4 text-gray-500 text-sm"
+            >
               No assemblies found. Create one first.
             </div>
 
-            <div v-else class="space-y-1">
+            <div
+              v-else
+              class="space-y-1"
+            >
               <button
                 v-for="assembly in assemblies"
                 :key="assembly.pk"
@@ -460,8 +478,12 @@ onMounted(() => {
                   : 'hover:bg-gray-100 dark:hover:bg-gray-800'"
                 @click="selectAssembly(assembly)"
               >
-                <div class="font-medium">{{ assembly.name }}</div>
-                <div class="text-xs text-gray-500 dark:text-gray-400">{{ assembly.IPN || 'No IPN' }}</div>
+                <div class="font-medium">
+                  {{ assembly.name }}
+                </div>
+                <div class="text-xs text-gray-500 dark:text-gray-400">
+                  {{ assembly.IPN || 'No IPN' }}
+                </div>
               </button>
             </div>
           </UCard>
@@ -469,19 +491,33 @@ onMounted(() => {
 
         <!-- Right: BOM details -->
         <div class="lg:col-span-2">
-          <div v-if="!selectedAssembly" class="text-center py-12 text-gray-500 dark:text-gray-400">
-            <UIcon name="i-lucide-package" class="w-10 h-10 mx-auto mb-3 opacity-50" />
+          <div
+            v-if="!selectedAssembly"
+            class="text-center py-12 text-gray-500 dark:text-gray-400"
+          >
+            <UIcon
+              name="i-lucide-package"
+              class="w-10 h-10 mx-auto mb-3 opacity-50"
+            />
             <p>Select an assembly to view its BOM</p>
           </div>
 
           <div v-else>
             <!-- Assembly header -->
             <UCard class="mb-4">
-              <div v-if="!isEditing" class="flex items-center justify-between">
+              <div
+                v-if="!isEditing"
+                class="flex items-center justify-between"
+              >
                 <div>
-                  <h2 class="text-lg font-bold">{{ selectedAssembly.name }}</h2>
+                  <h2 class="text-lg font-bold">
+                    {{ selectedAssembly.name }}
+                  </h2>
                   <div class="flex items-center gap-3 text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                    <span v-if="selectedAssembly.IPN" class="font-mono">{{ selectedAssembly.IPN }}</span>
+                    <span
+                      v-if="selectedAssembly.IPN"
+                      class="font-mono"
+                    >{{ selectedAssembly.IPN }}</span>
                     <span v-if="selectedAssembly.revision">Rev {{ selectedAssembly.revision }}</span>
                   </div>
                   <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
@@ -490,8 +526,13 @@ onMounted(() => {
                 </div>
                 <div class="flex items-center gap-3">
                   <div class="text-right">
-                    <p class="text-xs text-gray-500 dark:text-gray-400">Can build</p>
-                    <p class="text-lg font-bold" :class="canBuild > 0 ? 'text-green-600' : 'text-red-600'">
+                    <p class="text-xs text-gray-500 dark:text-gray-400">
+                      Can build
+                    </p>
+                    <p
+                      class="text-lg font-bold"
+                      :class="canBuild > 0 ? 'text-green-600' : 'text-red-600'"
+                    >
                       {{ canBuild }}
                     </p>
                   </div>
@@ -509,29 +550,51 @@ onMounted(() => {
               </div>
 
               <!-- Editable assembly details -->
-              <div v-else class="space-y-3">
+              <div
+                v-else
+                class="space-y-3"
+              >
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label class="block text-xs font-medium text-gray-500 mb-1">Name</label>
-                    <UInput v-model="editAssemblyName" size="sm" class="w-full" />
+                    <UInput
+                      v-model="editAssemblyName"
+                      size="sm"
+                      class="w-full"
+                    />
                   </div>
                   <div>
                     <label class="block text-xs font-medium text-gray-500 mb-1">IPN</label>
-                    <UInput v-model="editAssemblyIPN" size="sm" class="w-full" />
+                    <UInput
+                      v-model="editAssemblyIPN"
+                      size="sm"
+                      class="w-full"
+                    />
                   </div>
                   <div>
                     <label class="block text-xs font-medium text-gray-500 mb-1">Revision</label>
-                    <UInput v-model="editAssemblyRevision" size="sm" class="w-full" />
+                    <UInput
+                      v-model="editAssemblyRevision"
+                      size="sm"
+                      class="w-full"
+                    />
                   </div>
                   <div>
                     <label class="block text-xs font-medium text-gray-500 mb-1">Description</label>
-                    <UInput v-model="editAssemblyDescription" size="sm" class="w-full" />
+                    <UInput
+                      v-model="editAssemblyDescription"
+                      size="sm"
+                      class="w-full"
+                    />
                   </div>
                 </div>
               </div>
 
               <!-- Save/Cancel (edit mode only) -->
-              <div v-if="isEditing" class="flex gap-2 mt-3">
+              <div
+                v-if="isEditing"
+                class="flex gap-2 mt-3"
+              >
                 <UButton
                   size="xs"
                   icon="i-lucide-check"
@@ -553,9 +616,16 @@ onMounted(() => {
             </UCard>
 
             <!-- Shortage + action bar -->
-            <div v-if="!isEditing" class="flex items-center justify-between mb-4">
+            <div
+              v-if="!isEditing"
+              class="flex items-center justify-between mb-4"
+            >
               <div>
-                <UBadge v-if="totalShortages > 0" color="error" variant="subtle">
+                <UBadge
+                  v-if="totalShortages > 0"
+                  color="error"
+                  variant="subtle"
+                >
                   {{ totalShortages }} component{{ totalShortages !== 1 ? 's' : '' }} short for {{ buildQty }} build{{ buildQty !== 1 ? 's' : '' }}
                 </UBadge>
               </div>
@@ -581,10 +651,15 @@ onMounted(() => {
             </div>
 
             <!-- Add components in edit mode -->
-            <div v-if="isEditing" class="mb-4">
+            <div
+              v-if="isEditing"
+              class="mb-4"
+            >
               <UCard>
                 <template #header>
-                  <h4 class="text-sm font-semibold">Add Components</h4>
+                  <h4 class="text-sm font-semibold">
+                    Add Components
+                  </h4>
                 </template>
                 <UInput
                   v-model="editSearch.searchQuery.value"
@@ -609,16 +684,37 @@ onMounted(() => {
                   </button>
                 </div>
                 <!-- Pending additions -->
-                <div v-if="pendingAdditions.length > 0" class="mt-3 space-y-2">
+                <div
+                  v-if="pendingAdditions.length > 0"
+                  class="mt-3 space-y-2"
+                >
                   <div
                     v-for="(item, index) in pendingAdditions"
                     :key="item.part.pk"
                     class="flex items-center gap-2 p-2 rounded bg-green-50 dark:bg-green-950/20 text-sm"
                   >
-                    <UBadge color="success" variant="subtle" size="xs">NEW</UBadge>
+                    <UBadge
+                      color="success"
+                      variant="subtle"
+                      size="xs"
+                    >
+                      NEW
+                    </UBadge>
                     <span class="flex-1 truncate font-medium">{{ item.part.name }}</span>
-                    <UInput v-model.number="item.quantity" type="number" :min="1" size="xs" class="w-16" />
-                    <UButton size="xs" variant="ghost" color="error" icon="i-lucide-x" @click="removeEditAddition(index)" />
+                    <UInput
+                      v-model.number="item.quantity"
+                      type="number"
+                      :min="1"
+                      size="xs"
+                      class="w-16"
+                    />
+                    <UButton
+                      size="xs"
+                      variant="ghost"
+                      color="error"
+                      icon="i-lucide-x"
+                      @click="removeEditAddition(index)"
+                    />
                   </div>
                 </div>
               </UCard>
@@ -626,26 +722,62 @@ onMounted(() => {
 
             <!-- BOM table -->
             <UCard :ui="{ body: 'p-0 sm:p-0' }">
-              <div v-if="isLoadingBom" class="text-center py-8 text-gray-500">
-                <UIcon name="i-lucide-loader-2" class="w-5 h-5 animate-spin inline-block mr-2" />
+              <div
+                v-if="isLoadingBom"
+                class="text-center py-8 text-gray-500"
+              >
+                <UIcon
+                  name="i-lucide-loader-2"
+                  class="w-5 h-5 animate-spin inline-block mr-2"
+                />
                 Loading BOM...
               </div>
 
-              <div v-else-if="bomItems.length === 0 && !isEditing" class="text-center py-8 text-gray-500 text-sm">
+              <div
+                v-else-if="bomItems.length === 0 && !isEditing"
+                class="text-center py-8 text-gray-500 text-sm"
+              >
                 This assembly has no BOM items.
               </div>
 
-              <div v-else class="overflow-x-auto">
+              <div
+                v-else
+                class="overflow-x-auto"
+              >
                 <table class="w-full text-sm">
                   <thead>
                     <tr class="border-b border-gray-200 dark:border-gray-700">
-                      <th class="text-left px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Component</th>
-                      <th class="text-left px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">IPN</th>
-                      <th class="text-right px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Qty/Build</th>
-                      <th v-if="!isEditing" class="text-right px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Required</th>
-                      <th v-if="!isEditing" class="text-right px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">In Stock</th>
-                      <th v-if="!isEditing" class="text-right px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Shortage</th>
-                      <th v-if="isEditing" class="w-10 px-2 py-3"></th>
+                      <th class="text-left px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">
+                        Component
+                      </th>
+                      <th class="text-left px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">
+                        IPN
+                      </th>
+                      <th class="text-right px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">
+                        Qty/Build
+                      </th>
+                      <th
+                        v-if="!isEditing"
+                        class="text-right px-4 py-3 font-semibold text-gray-700 dark:text-gray-300"
+                      >
+                        Required
+                      </th>
+                      <th
+                        v-if="!isEditing"
+                        class="text-right px-4 py-3 font-semibold text-gray-700 dark:text-gray-300"
+                      >
+                        In Stock
+                      </th>
+                      <th
+                        v-if="!isEditing"
+                        class="text-right px-4 py-3 font-semibold text-gray-700 dark:text-gray-300"
+                      >
+                        Shortage
+                      </th>
+                      <th
+                        v-if="isEditing"
+                        class="w-10 px-2 py-3"
+                      />
                     </tr>
                   </thead>
                   <tbody>
@@ -672,14 +804,23 @@ onMounted(() => {
                           :min="1"
                           size="xs"
                           class="w-16 ml-auto"
-                          @update:model-value="(v: any) => editingQuantities.set(item.pk, Number(v))"
+                          @update:model-value="(v: string | number) => editingQuantities.set(item.pk, Number(v))"
                         />
-                        <span v-else class="text-gray-700 dark:text-gray-300">{{ item.quantity }}</span>
+                        <span
+                          v-else
+                          class="text-gray-700 dark:text-gray-300"
+                        >{{ item.quantity }}</span>
                       </td>
-                      <td v-if="!isEditing" class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">
+                      <td
+                        v-if="!isEditing"
+                        class="px-4 py-3 text-right text-gray-700 dark:text-gray-300"
+                      >
                         {{ item.quantity * buildQty }}
                       </td>
-                      <td v-if="!isEditing" class="px-4 py-3 text-right">
+                      <td
+                        v-if="!isEditing"
+                        class="px-4 py-3 text-right"
+                      >
                         <UBadge
                           :color="(item.sub_part_detail?.in_stock ?? 0) > 0 ? 'success' : 'error'"
                           variant="subtle"
@@ -688,7 +829,10 @@ onMounted(() => {
                           {{ item.sub_part_detail?.in_stock ?? 0 }}
                         </UBadge>
                       </td>
-                      <td v-if="!isEditing" class="px-4 py-3 text-right">
+                      <td
+                        v-if="!isEditing"
+                        class="px-4 py-3 text-right"
+                      >
                         <UBadge
                           v-if="getShortage(item) > 0"
                           color="error"
@@ -697,9 +841,15 @@ onMounted(() => {
                         >
                           -{{ getShortage(item) }}
                         </UBadge>
-                        <span v-else class="text-green-600 dark:text-green-400 text-xs font-medium">OK</span>
+                        <span
+                          v-else
+                          class="text-green-600 dark:text-green-400 text-xs font-medium"
+                        >OK</span>
                       </td>
-                      <td v-if="isEditing" class="px-2 py-3 text-center">
+                      <td
+                        v-if="isEditing"
+                        class="px-2 py-3 text-center"
+                      >
                         <UButton
                           v-if="!pendingDeletions.has(item.pk)"
                           size="xs"
@@ -727,16 +877,29 @@ onMounted(() => {
             <UModal v-model:open="isDeleteConfirmOpen">
               <template #content>
                 <div class="p-6 max-w-sm">
-                  <h3 class="text-lg font-bold mb-2">Delete Assembly</h3>
+                  <h3 class="text-lg font-bold mb-2">
+                    Delete Assembly
+                  </h3>
                   <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
                     Are you sure you want to delete <strong>{{ selectedAssembly?.name }}</strong>?
                     This will remove the assembly and all its BOM items. This cannot be undone.
                   </p>
                   <div class="flex gap-2 justify-end">
-                    <UButton variant="outline" color="neutral" size="sm" @click="isDeleteConfirmOpen = false">
+                    <UButton
+                      variant="outline"
+                      color="neutral"
+                      size="sm"
+                      @click="isDeleteConfirmOpen = false"
+                    >
                       Cancel
                     </UButton>
-                    <UButton color="error" size="sm" :loading="isDeletingAssembly" icon="i-lucide-trash-2" @click="deleteAssembly">
+                    <UButton
+                      color="error"
+                      size="sm"
+                      :loading="isDeletingAssembly"
+                      icon="i-lucide-trash-2"
+                      @click="deleteAssembly"
+                    >
                       Delete
                     </UButton>
                   </div>
@@ -754,25 +917,44 @@ onMounted(() => {
         <!-- Left: Assembly details -->
         <UCard>
           <template #header>
-            <h3 class="font-semibold">Assembly Details</h3>
+            <h3 class="font-semibold">
+              Assembly Details
+            </h3>
           </template>
 
           <div class="space-y-4">
             <div>
               <label class="block text-sm font-medium mb-1">Name *</label>
-              <UInput v-model="newAssembly.name" placeholder="e.g. Controller Board Assembly" class="w-full" />
+              <UInput
+                v-model="newAssembly.name"
+                placeholder="e.g. Controller Board Assembly"
+                class="w-full"
+              />
             </div>
             <div>
               <label class="block text-sm font-medium mb-1">IPN</label>
-              <UInput v-model="newAssembly.IPN" placeholder="e.g. ASM-001" class="w-full" />
+              <UInput
+                v-model="newAssembly.IPN"
+                placeholder="e.g. ASM-001"
+                class="w-full"
+              />
             </div>
             <div>
               <label class="block text-sm font-medium mb-1">Revision</label>
-              <UInput v-model="newAssembly.revision" placeholder="e.g. A" class="w-full" />
+              <UInput
+                v-model="newAssembly.revision"
+                placeholder="e.g. A"
+                class="w-full"
+              />
             </div>
             <div>
               <label class="block text-sm font-medium mb-1">Description</label>
-              <UTextarea v-model="newAssembly.description" placeholder="Describe what this assembly is..." :rows="3" class="w-full" />
+              <UTextarea
+                v-model="newAssembly.description"
+                placeholder="Describe what this assembly is..."
+                :rows="3"
+                class="w-full"
+              />
             </div>
 
             <!-- Advanced Options -->
@@ -790,18 +972,21 @@ onMounted(() => {
                 Advanced Options
               </button>
 
-              <div v-if="showAdvancedOptions" class="mt-3 space-y-3 pl-5 border-l-2 border-gray-200 dark:border-gray-700">
+              <div
+                v-if="showAdvancedOptions"
+                class="mt-3 space-y-3 pl-5 border-l-2 border-gray-200 dark:border-gray-700"
+              >
                 <div>
                   <label class="block text-sm font-medium mb-1">Category</label>
                   <USelectMenu
-                    :model-value="newAssembly.category"
+                    :model-value="newAssembly.category ?? undefined"
                     :items="categoryItems"
                     value-key="value"
                     placeholder="Select a category..."
                     :loading="isLoadingCategories"
                     :search-input="true"
                     class="w-full"
-                    @update:model-value="(val: any) => newAssembly.category = val"
+                    @update:model-value="(val: number | null) => newAssembly.category = val"
                   />
                 </div>
               </div>
@@ -814,7 +999,9 @@ onMounted(() => {
               <UCheckbox v-model="printLabel" />
               <div>
                 <label class="text-sm font-medium">Print label on create</label>
-                <p class="text-xs text-gray-500 dark:text-gray-400">Print a Zebra label with QR barcode and link it to this assembly</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400">
+                  Print a Zebra label with QR barcode and link it to this assembly
+                </p>
               </div>
             </div>
           </div>
@@ -823,7 +1010,9 @@ onMounted(() => {
         <!-- Right: BOM components -->
         <UCard>
           <template #header>
-            <h3 class="font-semibold">Components ({{ pendingBomItems.length }})</h3>
+            <h3 class="font-semibold">
+              Components ({{ pendingBomItems.length }})
+            </h3>
           </template>
 
           <!-- Search for parts -->
@@ -847,26 +1036,40 @@ onMounted(() => {
                 class="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 border-b border-gray-100 dark:border-gray-800 last:border-0"
                 @click="addComponentToBom(part)"
               >
-                <div class="font-medium">{{ part.name }}</div>
-                <div class="text-xs text-gray-500">{{ part.IPN || 'No IPN' }} · Stock: {{ part.in_stock }}</div>
+                <div class="font-medium">
+                  {{ part.name }}
+                </div>
+                <div class="text-xs text-gray-500">
+                  {{ part.IPN || 'No IPN' }} · Stock: {{ part.in_stock }}
+                </div>
               </button>
             </div>
           </div>
 
           <!-- Added components list -->
-          <div v-if="pendingBomItems.length === 0" class="text-center py-6 text-gray-500 text-sm">
+          <div
+            v-if="pendingBomItems.length === 0"
+            class="text-center py-6 text-gray-500 text-sm"
+          >
             Search and add components above
           </div>
 
-          <div v-else class="space-y-2">
+          <div
+            v-else
+            class="space-y-2"
+          >
             <div
               v-for="(item, index) in pendingBomItems"
               :key="item.part.pk"
               class="flex items-center gap-3 p-2 rounded-md bg-gray-50 dark:bg-gray-800/50"
             >
               <div class="flex-1 min-w-0">
-                <p class="text-sm font-medium truncate">{{ item.part.name }}</p>
-                <p class="text-xs text-gray-500">{{ item.part.IPN || 'No IPN' }}</p>
+                <p class="text-sm font-medium truncate">
+                  {{ item.part.name }}
+                </p>
+                <p class="text-xs text-gray-500">
+                  {{ item.part.IPN || 'No IPN' }}
+                </p>
               </div>
               <div class="flex items-center gap-2">
                 <label class="text-xs text-gray-500">Qty:</label>

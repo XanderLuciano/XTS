@@ -3,7 +3,7 @@ import * as fc from 'fast-check'
 import { useScanner } from '../useScanner'
 import { FORMAT_LABELS } from '~/types/scanner'
 import type { BarcodeFormat } from '~/types/scanner'
-import { createApp, defineComponent, h, ref } from 'vue'
+import { createApp, defineComponent, h } from 'vue'
 
 // Helper to run a composable inside a real Vue component context (provides onUnmounted etc.)
 function withSetup<T>(composableFn: () => T): { result: T, unmount: () => void } {
@@ -12,7 +12,7 @@ function withSetup<T>(composableFn: () => T): { result: T, unmount: () => void }
     setup() {
       result = composableFn()
       return () => h('div')
-    },
+    }
   }))
   const root = document.createElement('div')
   app.mount(root)
@@ -22,7 +22,7 @@ function withSetup<T>(composableFn: () => T): { result: T, unmount: () => void }
 // Arbitrary: generate a list of camera device objects (1-8 devices, each with a random deviceId)
 const cameraListArb = fc.array(
   fc.string({ minLength: 1, maxLength: 64 }).filter(s => s.trim().length > 0),
-  { minLength: 1, maxLength: 8 },
+  { minLength: 1, maxLength: 8 }
 )
 
 describe('useScanner - Property Tests', () => {
@@ -51,7 +51,7 @@ describe('useScanner - Property Tests', () => {
     Object.defineProperty(navigator, 'mediaDevices', {
       value: originalMediaDevices,
       writable: true,
-      configurable: true,
+      configurable: true
     })
     if (originalBarcodeDetector) {
       (globalThis as Record<string, unknown>).BarcodeDetector = originalBarcodeDetector
@@ -72,7 +72,7 @@ describe('useScanner - Property Tests', () => {
           groupId: 'group-1',
           kind: 'videoinput' as MediaDeviceKind,
           label: `Camera ${id}`,
-          toJSON: () => ({}),
+          toJSON: () => ({})
         }))
 
         // Also add a non-video device to ensure filtering works
@@ -83,18 +83,18 @@ describe('useScanner - Property Tests', () => {
             groupId: 'group-2',
             kind: 'audioinput' as MediaDeviceKind,
             label: 'Microphone',
-            toJSON: () => ({}),
-          },
+            toJSON: () => ({})
+          }
         ]
 
         // Mock MediaStream with tracks
         const mockTrack = {
           stop: vi.fn(),
           onended: null as (() => void) | null,
-          kind: 'video',
+          kind: 'video'
         }
         const mockStream = {
-          getTracks: vi.fn().mockReturnValue([mockTrack]),
+          getTracks: vi.fn().mockReturnValue([mockTrack])
         } as unknown as MediaStream
 
         const getUserMediaMock = vi.fn().mockResolvedValue(mockStream)
@@ -103,10 +103,10 @@ describe('useScanner - Property Tests', () => {
         Object.defineProperty(navigator, 'mediaDevices', {
           value: {
             getUserMedia: getUserMediaMock,
-            enumerateDevices: enumerateDevicesMock,
+            enumerateDevices: enumerateDevicesMock
           },
           writable: true,
-          configurable: true,
+          configurable: true
         })
 
         const { result, unmount } = withSetup(() => useScanner())
@@ -134,7 +134,7 @@ describe('useScanner - Property Tests', () => {
         result.stopCamera()
         unmount()
       }),
-      { numRuns: 100 },
+      { numRuns: 100 }
     )
   })
 
@@ -150,11 +150,11 @@ describe('useScanner - Property Tests', () => {
           stop: vi.fn(),
           onended: null as (() => void) | null,
           kind: 'video',
-          label: `track-${i}`,
+          label: `track-${i}`
         }))
 
         const mockStream = {
-          getTracks: vi.fn().mockReturnValue(mockTracks),
+          getTracks: vi.fn().mockReturnValue(mockTracks)
         } as unknown as MediaStream
 
         const getUserMediaMock = vi.fn().mockResolvedValue(mockStream)
@@ -164,17 +164,17 @@ describe('useScanner - Property Tests', () => {
             groupId: 'group-1',
             kind: 'videoinput' as MediaDeviceKind,
             label: 'Camera 1',
-            toJSON: () => ({}),
-          },
+            toJSON: () => ({})
+          }
         ])
 
         Object.defineProperty(navigator, 'mediaDevices', {
           value: {
             getUserMedia: getUserMediaMock,
-            enumerateDevices: enumerateDevicesMock,
+            enumerateDevices: enumerateDevicesMock
           },
           writable: true,
-          configurable: true,
+          configurable: true
         })
 
         const { result, unmount } = withSetup(() => useScanner())
@@ -201,7 +201,7 @@ describe('useScanner - Property Tests', () => {
 
         unmount()
       }),
-      { numRuns: 100 },
+      { numRuns: 100 }
     )
   })
 
@@ -216,10 +216,10 @@ describe('useScanner - Property Tests', () => {
         const mockTrack = {
           stop: vi.fn(),
           onended: null as (() => void) | null,
-          kind: 'video',
+          kind: 'video'
         }
         const mockStream = {
-          getTracks: vi.fn().mockReturnValue([mockTrack]),
+          getTracks: vi.fn().mockReturnValue([mockTrack])
         } as unknown as MediaStream
 
         const getUserMediaMock = vi.fn().mockResolvedValue(mockStream)
@@ -229,17 +229,17 @@ describe('useScanner - Property Tests', () => {
             groupId: 'group-1',
             kind: 'videoinput' as MediaDeviceKind,
             label: `Camera ${deviceId}`,
-            toJSON: () => ({}),
-          },
+            toJSON: () => ({})
+          }
         ])
 
         Object.defineProperty(navigator, 'mediaDevices', {
           value: {
             getUserMedia: getUserMediaMock,
-            enumerateDevices: enumerateDevicesMock,
+            enumerateDevices: enumerateDevicesMock
           },
           writable: true,
-          configurable: true,
+          configurable: true
         })
 
         const { result, unmount } = withSetup(() => useScanner({ cameraDeviceId: deviceId }))
@@ -248,14 +248,14 @@ describe('useScanner - Property Tests', () => {
 
         // Assert: getUserMedia was called with the exact deviceId constraint
         expect(getUserMediaMock).toHaveBeenCalledWith({
-          video: { deviceId: { exact: deviceId } },
+          video: { deviceId: { exact: deviceId } }
         })
 
         // Cleanup
         result.stopCamera()
         unmount()
       }),
-      { numRuns: 100 },
+      { numRuns: 100 }
     )
   })
 
@@ -265,14 +265,14 @@ describe('useScanner - Property Tests', () => {
     const barcodeValueArb = fc.string({ minLength: 1, maxLength: 100 }).filter(s => s.trim().length > 0)
     const barcodeFormatArb = fc.constantFrom<BarcodeFormat>(
       'ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128',
-      'qr_code', 'data_matrix', 'pdf417', 'aztec',
+      'qr_code', 'data_matrix', 'pdf417', 'aztec'
     )
 
     await fc.assert(
       fc.asyncProperty(barcodeValueArb, barcodeFormatArb, async (value, format) => {
         // Track what onDetected receives
-        const detectedResults: { value: string; type: string }[] = []
-        const onDetected = vi.fn((result: { value: string; type: string }) => {
+        const detectedResults: { value: string, type: string }[] = []
+        const onDetected = vi.fn((result: { value: string, type: string }) => {
           detectedResults.push({ value: result.value, type: result.type })
         })
 
@@ -282,13 +282,13 @@ describe('useScanner - Property Tests', () => {
 
         const getUserMediaMock = vi.fn().mockResolvedValue(mockStream)
         const enumerateDevicesMock = vi.fn().mockResolvedValue([
-          { deviceId: 'cam-1', groupId: 'g1', kind: 'videoinput' as MediaDeviceKind, label: 'Camera', toJSON: () => ({}) },
+          { deviceId: 'cam-1', groupId: 'g1', kind: 'videoinput' as MediaDeviceKind, label: 'Camera', toJSON: () => ({}) }
         ])
 
         Object.defineProperty(navigator, 'mediaDevices', {
           value: { getUserMedia: getUserMediaMock, enumerateDevices: enumerateDevicesMock },
           writable: true,
-          configurable: true,
+          configurable: true
         })
 
         // Mock native BarcodeDetector that returns our generated value and format
@@ -296,13 +296,13 @@ describe('useScanner - Property Tests', () => {
           {
             rawValue: value,
             format,
-            boundingBox: { x: 0, y: 0, width: 100, height: 50 },
-          },
+            boundingBox: { x: 0, y: 0, width: 100, height: 50 }
+          }
         ])
 
         const allFormats: BarcodeFormat[] = [
           'ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128',
-          'qr_code', 'data_matrix', 'pdf417', 'aztec',
+          'qr_code', 'data_matrix', 'pdf417', 'aztec'
         ]
 
         ;(globalThis as Record<string, unknown>).BarcodeDetector = class MockBarcodeDetector {
@@ -342,7 +342,7 @@ describe('useScanner - Property Tests', () => {
 
         // Assert: onDetected was called with the correct value and FORMAT_LABELS mapping
         expect(onDetected).toHaveBeenCalled()
-        const received = onDetected.mock.calls[0]![0] as { value: string; type: string }
+        const received = onDetected.mock.calls[0]![0] as { value: string, type: string }
         expect(received.value).toBe(value)
         expect(received.type).toBe(FORMAT_LABELS[format])
 
@@ -351,7 +351,7 @@ describe('useScanner - Property Tests', () => {
         delete (globalThis as Record<string, unknown>).BarcodeDetector
         unmount()
       }),
-      { numRuns: 100 },
+      { numRuns: 100 }
     )
   })
 
@@ -373,13 +373,13 @@ describe('useScanner - Property Tests', () => {
 
         const getUserMediaMock = vi.fn().mockResolvedValue(mockStream)
         const enumerateDevicesMock = vi.fn().mockResolvedValue([
-          { deviceId: 'cam-1', groupId: 'g1', kind: 'videoinput' as MediaDeviceKind, label: 'Camera', toJSON: () => ({}) },
+          { deviceId: 'cam-1', groupId: 'g1', kind: 'videoinput' as MediaDeviceKind, label: 'Camera', toJSON: () => ({}) }
         ])
 
         Object.defineProperty(navigator, 'mediaDevices', {
           value: { getUserMedia: getUserMediaMock, enumerateDevices: enumerateDevicesMock },
           writable: true,
-          configurable: true,
+          configurable: true
         })
 
         // Mock native BarcodeDetector that always returns the same barcode
@@ -387,13 +387,13 @@ describe('useScanner - Property Tests', () => {
           {
             rawValue: barcodeValue,
             format: 'ean_13',
-            boundingBox: { x: 0, y: 0, width: 100, height: 50 },
-          },
+            boundingBox: { x: 0, y: 0, width: 100, height: 50 }
+          }
         ])
 
         const allFormats: BarcodeFormat[] = [
           'ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128',
-          'qr_code', 'data_matrix', 'pdf417', 'aztec',
+          'qr_code', 'data_matrix', 'pdf417', 'aztec'
         ]
 
         ;(globalThis as Record<string, unknown>).BarcodeDetector = class MockBarcodeDetector {
@@ -454,7 +454,7 @@ describe('useScanner - Property Tests', () => {
         vi.useRealTimers()
         unmount()
       }),
-      { numRuns: 100 },
+      { numRuns: 100 }
     )
   })
 })
@@ -481,7 +481,7 @@ describe('useScanner - Unit Tests', () => {
     Object.defineProperty(navigator, 'mediaDevices', {
       value: originalMediaDevices,
       writable: true,
-      configurable: true,
+      configurable: true
     })
     if (originalBarcodeDetector) {
       (globalThis as Record<string, unknown>).BarcodeDetector = originalBarcodeDetector
@@ -501,13 +501,13 @@ describe('useScanner - Unit Tests', () => {
 
     const getUserMedia = overrides?.getUserMedia ?? vi.fn().mockResolvedValue(mockStream)
     const enumerateDevices = overrides?.enumerateDevices ?? vi.fn().mockResolvedValue([
-      { deviceId: 'cam-1', groupId: 'g1', kind: 'videoinput' as MediaDeviceKind, label: 'Camera 1', toJSON: () => ({}) },
+      { deviceId: 'cam-1', groupId: 'g1', kind: 'videoinput' as MediaDeviceKind, label: 'Camera 1', toJSON: () => ({}) }
     ])
 
     Object.defineProperty(navigator, 'mediaDevices', {
       value: { getUserMedia, enumerateDevices },
       writable: true,
-      configurable: true,
+      configurable: true
     })
 
     return { mockTrack, mockStream, getUserMedia, enumerateDevices }
@@ -521,7 +521,7 @@ describe('useScanner - Unit Tests', () => {
     await result.startCamera()
 
     expect(getUserMedia).toHaveBeenCalledWith({
-      video: { facingMode: 'environment' },
+      video: { facingMode: 'environment' }
     })
 
     result.stopCamera()
@@ -532,7 +532,7 @@ describe('useScanner - Unit Tests', () => {
   it('permission denied sets specific error message', async () => {
     const permError = new DOMException('Permission denied', 'NotAllowedError')
     setupMediaDevices({
-      getUserMedia: vi.fn().mockRejectedValue(permError),
+      getUserMedia: vi.fn().mockRejectedValue(permError)
     })
 
     const { result, unmount } = withSetup(() => useScanner())
@@ -547,7 +547,7 @@ describe('useScanner - Unit Tests', () => {
   it('no camera available sets specific error message', async () => {
     const notFoundError = new DOMException('No device found', 'NotFoundError')
     setupMediaDevices({
-      getUserMedia: vi.fn().mockRejectedValue(notFoundError),
+      getUserMedia: vi.fn().mockRejectedValue(notFoundError)
     })
 
     const { result, unmount } = withSetup(() => useScanner())

@@ -1,4 +1,5 @@
-import type { Ref } from 'vue'
+import type { Ref, DeepReadonly } from 'vue'
+import type { Part } from '~/types/inventree'
 
 /** Supported 1D barcode formats */
 export type Barcode1DFormat = 'ean_13' | 'ean_8' | 'upc_a' | 'upc_e' | 'code_128'
@@ -19,7 +20,7 @@ export const FORMAT_LABELS: Record<BarcodeFormat, string> = {
   qr_code: '2D - QR Code',
   data_matrix: '2D - Data Matrix',
   pdf417: '2D - PDF417',
-  aztec: '2D - Aztec',
+  aztec: '2D - Aztec'
 }
 
 export interface ScanResult {
@@ -30,7 +31,7 @@ export interface ScanResult {
   /** Raw format identifier from the detection library */
   rawFormat: string
   /** Bounding box of the detected barcode region (if available) */
-  boundingBox?: { x: number; y: number; width: number; height: number }
+  boundingBox?: { x: number, y: number, width: number, height: number }
 }
 
 export interface UseScannerOptions {
@@ -47,10 +48,26 @@ export interface UseScannerOptions {
 export interface UseScanner {
   isActive: Readonly<Ref<boolean>>
   error: Readonly<Ref<string | null>>
-  availableCameras: Readonly<Ref<MediaDeviceInfo[]>>
+  availableCameras: DeepReadonly<Ref<MediaDeviceInfo[]>>
   lastResult: Readonly<Ref<ScanResult | null>>
   startCamera: (deviceId?: string) => Promise<void>
   stopCamera: () => void
   switchCamera: (deviceId: string) => Promise<void>
   videoRef: Ref<HTMLVideoElement | null>
+}
+
+/** A single barcode scan, including its InvenTree lookup state. */
+export interface ScanRecord {
+  /** The scanned barcode value */
+  barcode: string
+  /** Barcode type label from the scanner, e.g. "1D - EAN-13" */
+  type?: string
+  /** When the barcode was scanned */
+  timestamp: Date
+  /** Current InvenTree lookup state */
+  lookupStatus: 'loading' | 'found' | 'not_found' | 'error'
+  /** Resolved part data (when lookupStatus === 'found') */
+  part?: Part
+  /** Error description (when lookupStatus === 'error') */
+  errorMessage?: string
 }

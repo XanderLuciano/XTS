@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import type { ComponentPublicInstance } from 'vue'
+import type { StockLocation } from '~/types/inventree'
+
 const toast = useToast()
 const config = useRuntimeConfig()
 
@@ -21,18 +24,37 @@ const {
   searchMode,
   addItem,
   updateCount,
+  updateLocation,
   removeEntry,
   removeLastEntry,
   clearLog,
   applyStockTake,
   setSearchMode,
-  highlightEntry,
   loadFromStorage,
   isEmpty,
   hasErrors,
   entryCount,
   highlightedEntryId
 } = useStockTakingLog(inventreeService)
+
+// Stock locations for the location picker
+const locations = ref<StockLocation[]>([])
+
+const locationItems = computed(() =>
+  locations.value.map(l => ({ label: l.name, value: l.pk }))
+)
+
+const getLocationName = (pk: number | null): string => {
+  if (pk == null) return 'No location'
+  return locations.value.find(l => l.pk === pk)?.name ?? `Location #${pk}`
+}
+
+/**
+ * Handles location change for a log entry.
+ */
+const handleLocationUpdate = (entryId: string, newLocation: number | null) => {
+  updateLocation(entryId, newLocation)
+}
 
 // Barcode input state
 const barcodeInput = ref('')
@@ -56,9 +78,14 @@ const handleScan = () => {
  */
 const focusInput = () => {
   nextTick(() => {
-    const el = barcodeInputRef.value as any
-    const input = el?.$el?.querySelector('input') ?? el
-    input?.focus?.()
+    const el: unknown = barcodeInputRef.value
+    if (!el) return
+    // The ref may be the raw <input>, or a Nuxt UI component instance with $el.
+    const root = el instanceof HTMLElement
+      ? el
+      : (el as { $el?: HTMLElement }).$el
+    const input = root?.querySelector('input') ?? root
+    if (input instanceof HTMLElement) input.focus()
   })
 }
 
@@ -135,8 +162,8 @@ const handleApplyStockTake = async () => {
 // Entry refs for scroll-to-highlight
 const entryRefs = ref<Record<string, HTMLElement>>({})
 
-const setEntryRef = (entryId: string, el: any) => {
-  if (el) {
+const setEntryRef = (entryId: string, el: Element | ComponentPublicInstance | null) => {
+  if (el instanceof HTMLElement) {
     entryRefs.value[entryId] = el
   }
 }
@@ -163,6 +190,10 @@ watch(highlightedEntryId, (newId) => {
 onMounted(() => {
   loadFromStorage()
   focusInput()
+
+  inventreeService.getLocations()
+    .then((locs) => { locations.value = locs })
+    .catch((e) => { console.error('Failed to load locations:', e) })
 })
 
 // Keyboard shortcut for undo (Escape key)
@@ -191,17 +222,29 @@ onMounted(() => {
 <template>
   <div class="p-6 w-full max-w-4xl mx-auto">
     <div class="mb-6">
-      <h1 class="text-2xl font-bold mb-1">Stock Taking</h1>
-      <p class="text-sm text-gray-600 dark:text-gray-400">Scan items to verify and adjust stock counts</p>
+      <h1 class="text-2xl font-bold mb-1">
+        Stock Taking
+      </h1>
+      <p class="text-sm text-gray-600 dark:text-gray-400">
+        Scan items to verify and adjust stock counts
+      </p>
     </div>
 
     <UCard>
       <template #header>
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2">
-            <h2 class="text-lg font-semibold">Stock Taking</h2>
-            <UTooltip text="Scan items to verify and adjust stock counts. Submit all changes in bulk." arrow>
-              <UIcon name="i-lucide-help-circle" class="w-4 h-4 text-muted cursor-help" />
+            <h2 class="text-lg font-semibold">
+              Stock Taking
+            </h2>
+            <UTooltip
+              text="Scan items to verify and adjust stock counts. Submit all changes in bulk."
+              arrow
+            >
+              <UIcon
+                name="i-lucide-help-circle"
+                class="w-4 h-4 text-muted cursor-help"
+              />
             </UTooltip>
           </div>
           <div class="flex gap-2">
@@ -234,7 +277,10 @@ onMounted(() => {
           @keyup.enter="handleScan"
         >
           <template #trailing>
-            <UKbd value="/" size="sm" />
+            <UKbd
+              value="/"
+              size="sm"
+            />
           </template>
         </UInput>
       </div>
@@ -243,20 +289,37 @@ onMounted(() => {
 
       <div class="flex items-center justify-between mb-3">
         <span class="text-sm text-gray-500">Log ({{ entryCount }})</span>
-        <UBadge v-if="logEntries.length > 0" color="primary" size="sm">
+        <UBadge
+          v-if="logEntries.length > 0"
+          color="primary"
+          size="sm"
+        >
           {{ logEntries.length }} item(s)
         </UBadge>
       </div>
 
       <!-- Empty State -->
-      <div v-if="logEntries.length === 0" class="text-center py-12 text-gray-500">
-        <UIcon name="i-lucide-clipboard-list" class="w-12 h-12 mx-auto mb-4 opacity-50" />
-        <p class="text-lg">Log is empty</p>
-        <p class="text-sm">Scan a barcode to add items</p>
+      <div
+        v-if="logEntries.length === 0"
+        class="text-center py-12 text-gray-500"
+      >
+        <UIcon
+          name="i-lucide-clipboard-list"
+          class="w-12 h-12 mx-auto mb-4 opacity-50"
+        />
+        <p class="text-lg">
+          Log is empty
+        </p>
+        <p class="text-sm">
+          Scan a barcode to add items
+        </p>
       </div>
 
       <!-- Log Entries -->
-      <div v-else class="space-y-3">
+      <div
+        v-else
+        class="space-y-3"
+      >
         <div
           v-for="entry in logEntries"
           :key="entry.id"
@@ -273,10 +336,17 @@ onMounted(() => {
           <div class="flex items-center gap-4 flex-1">
             <!-- Loading State -->
             <template v-if="entry.status === 'loading'">
-              <UIcon name="i-lucide-loader-circle" class="w-6 h-6 animate-spin text-gray-400" />
+              <UIcon
+                name="i-lucide-loader-circle"
+                class="w-6 h-6 animate-spin text-gray-400"
+              />
               <div>
-                <p class="font-mono font-semibold">{{ entry.barcode }}</p>
-                <p class="text-sm text-gray-500">Loading...</p>
+                <p class="font-mono font-semibold">
+                  {{ entry.barcode }}
+                </p>
+                <p class="text-sm text-gray-500">
+                  Loading...
+                </p>
               </div>
             </template>
 
@@ -287,22 +357,59 @@ onMounted(() => {
                 :src="resolveImageUrl(entry.part.thumbnail || entry.part.image)"
                 :alt="entry.part.name"
                 class="w-12 h-12 object-cover rounded"
+              >
+              <UIcon
+                v-else
+                name="i-lucide-package"
+                class="w-12 h-12 text-gray-400"
               />
-              <UIcon v-else name="i-lucide-package" class="w-12 h-12 text-gray-400" />
               <div class="flex-1">
-                <p class="font-semibold">{{ entry.part.name }}</p>
+                <p class="font-semibold">
+                  {{ entry.part.name }}
+                </p>
                 <p class="text-sm text-gray-500">
                   System: {{ entry.systemCount }} | Barcode: {{ entry.barcode }}
                 </p>
+                <div class="flex items-center gap-1.5 mt-1">
+                  <UIcon
+                    name="i-lucide-map-pin"
+                    class="w-3.5 h-3.5 text-gray-400 shrink-0"
+                  />
+                  <USelectMenu
+                    :model-value="entry.confirmedLocation ?? undefined"
+                    :items="locationItems"
+                    value-key="value"
+                    placeholder="No location"
+                    :search-input="true"
+                    size="xs"
+                    class="w-44"
+                    @update:model-value="(val: number | undefined) => handleLocationUpdate(entry.id, val ?? null)"
+                  />
+                  <UBadge
+                    v-if="entry.confirmedLocation !== entry.systemLocation"
+                    color="warning"
+                    variant="subtle"
+                    size="sm"
+                  >
+                    was {{ getLocationName(entry.systemLocation) }}
+                  </UBadge>
+                </div>
               </div>
             </template>
 
             <!-- Error State -->
             <template v-else-if="entry.status === 'error'">
-              <UIcon name="i-lucide-alert-circle" class="w-6 h-6 text-red-500" />
+              <UIcon
+                name="i-lucide-alert-circle"
+                class="w-6 h-6 text-red-500"
+              />
               <div>
-                <p class="font-mono font-semibold text-red-700 dark:text-red-400">{{ entry.barcode }}</p>
-                <p class="text-sm text-red-600 dark:text-red-400">{{ entry.errorMessage }}</p>
+                <p class="font-mono font-semibold text-red-700 dark:text-red-400">
+                  {{ entry.barcode }}
+                </p>
+                <p class="text-sm text-red-600 dark:text-red-400">
+                  {{ entry.errorMessage }}
+                </p>
               </div>
             </template>
           </div>
@@ -328,11 +435,17 @@ onMounted(() => {
               </div>
             </template>
             <!-- Loading status -->
-            <span v-else-if="entry.status === 'loading'" class="text-sm text-gray-400 w-20 text-center">
+            <span
+              v-else-if="entry.status === 'loading'"
+              class="text-sm text-gray-400 w-20 text-center"
+            >
               ...
             </span>
             <!-- Error status text -->
-            <span v-else class="text-sm text-red-500 w-20 text-center">
+            <span
+              v-else
+              class="text-sm text-red-500 w-20 text-center"
+            >
               Error
             </span>
 
@@ -357,7 +470,10 @@ onMounted(() => {
             icon="i-lucide-undo-2"
             @click="handleUndoLast"
           >
-            Undo <UKbd value="Esc" size="sm" />
+            Undo <UKbd
+              value="Esc"
+              size="sm"
+            />
           </UButton>
 
           <UButton

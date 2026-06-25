@@ -107,11 +107,11 @@ export function useLocalPrinterConfig() {
     const maxLength = h + config.value.dpi
 
     let zpl = '^XA\n'
-    zpl += `^PW${w}\n`       // Print width
+    zpl += `^PW${w}\n` // Print width
     zpl += `^ML${maxLength}\n` // Max label length (height + 1" search margin)
-    zpl += '^LH0,0\n'        // Label home origin
-    zpl += '^MNN\n'           // Media type: non-continuous (die-cut)
-    zpl += '^MNA\n'           // Media tracking: auto (gap sensing enabled)
+    zpl += '^LH0,0\n' // Label home origin
+    zpl += '^MNN\n' // Media type: non-continuous (die-cut)
+    zpl += '^MNA\n' // Media tracking: auto (gap sensing enabled)
     zpl += '^XZ\n'
     return zpl
   }

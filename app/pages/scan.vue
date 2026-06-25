@@ -1,7 +1,14 @@
 <script setup lang="ts">
-import type { CreatePartDto, AddStockDto, StockItem, PartCategory, StockLocation, Part } from '~/types/inventree'
-import type { ScanResult } from '~/types/scanner'
+import type { CreatePartDto, AddStockDto, StockItem, PartCategory, StockLocation } from '~/types/inventree'
+import type { ScanResult, ScanRecord } from '~/types/scanner'
+import type { ComponentPublicInstance } from 'vue'
 import { resolveImageUrl as _resolveImageUrl } from '~/utils/resolveImageUrl'
+import { isApiError, extractApiError } from '~/utils/apiError'
+
+/** Minimal shape of a Nuxt UI UInput template ref — only the members we use. */
+interface UInputRef extends ComponentPublicInstance {
+  inputRef?: HTMLInputElement | null
+}
 
 const toast = useToast()
 const config = useRuntimeConfig()
@@ -17,7 +24,7 @@ const resolveImageUrl = (url: string | undefined | null): string => {
 
 // --- Camera scanner state ---
 const isScannerModalOpen = ref(false)
-const scannerRef = ref<{ startCamera: () => Promise<void>; stopCamera: () => void } | null>(null)
+const scannerRef = ref<{ startCamera: () => Promise<void>, stopCamera: () => void } | null>(null)
 
 const openScannerModal = () => {
   isScannerModalOpen.value = true
@@ -33,14 +40,14 @@ const handleBarcodeDetected = (result: ScanResult) => {
     barcode: result.value,
     type: result.type,
     timestamp: new Date(),
-    lookupStatus: 'loading',
+    lookupStatus: 'loading'
   }
   scanHistory.value.unshift(record)
   lookupBarcode(record, scanHistory)
   toast.add({
     title: `Scanned: ${result.value}`,
     description: result.type,
-    color: 'success',
+    color: 'success'
   })
 }
 
@@ -48,7 +55,7 @@ const handleScannerError = (message: string) => {
   toast.add({
     title: 'Scanner error',
     description: message,
-    color: 'error',
+    color: 'error'
   })
 }
 
@@ -79,15 +86,6 @@ onBeforeRouteLeave(() => {
   }
 })
 
-interface ScanRecord {
-  barcode: string
-  type?: string        // Barcode_Type label from scanner, e.g. "1D - EAN-13"
-  timestamp: Date
-  lookupStatus: 'loading' | 'found' | 'not_found' | 'error'
-  part?: Part
-  errorMessage?: string
-}
-
 interface ScrapedData {
   articleNumber: string
   name: string
@@ -106,7 +104,7 @@ interface PartForm {
 }
 
 const barcodeInput = ref('')
-const barcodeInputRef = ref<InstanceType<typeof UInput> | null>(null)
+const barcodeInputRef = ref<UInputRef | null>(null)
 const scanHistory = ref<ScanRecord[]>([])
 const selectedManufacturer = ref<'hoffmann' | 'sandvik'>('hoffmann')
 const isModalOpen = ref(false)
@@ -123,11 +121,11 @@ const createStock = ref(true)
 const stockQuantity = ref(1)
 const linkBarcode = ref(true)
 const currentBarcode = ref<string | null>(null)
-const stockQuantityInput = ref<InstanceType<typeof UInput> | null>(null)
+const stockQuantityInput = ref<ComponentPublicInstance | null>(null)
 const categories = ref<PartCategory[]>([])
 const locations = ref<StockLocation[]>([])
-const selectedCategory = ref<PartCategory | null>(null)
-const selectedLocation = ref<StockLocation | null>(null)
+const selectedCategory = ref<PartCategory | undefined>(undefined)
+const selectedLocation = ref<StockLocation | undefined>(undefined)
 
 watch(createStock, async (checked) => {
   if (checked) {
@@ -143,21 +141,29 @@ watch(createStock, async (checked) => {
 
 const handleScan = () => {
   if (!barcodeInput.value.trim()) return
-  
+
   const record: ScanRecord = {
     barcode: barcodeInput.value.trim(),
     timestamp: new Date(),
-    lookupStatus: 'loading',
+    lookupStatus: 'loading'
   }
   scanHistory.value.unshift(record)
   lookupBarcode(record, scanHistory)
-  
+
   barcodeInput.value = ''
 }
 
 const clearHistory = () => {
   scanHistory.value = []
   localStorage.removeItem('scanHistory')
+}
+
+/**
+ * Template wrapper for re-looking up a scan. Templates auto-unwrap refs, so we
+ * pass the actual `scanHistory` ref from here rather than from the template.
+ */
+const recheckScan = (scan: ScanRecord) => {
+  reLookupBarcode(scan, scanHistory)
 }
 
 const removeHistoryItem = (index: number) => {
@@ -172,17 +178,17 @@ const formatTime = (date: Date) => {
 onMounted(async () => {
   const input = document.querySelector('input[type="text"]') as HTMLInputElement
   input?.focus()
-  
+
   const saved = localStorage.getItem('scanHistory')
   if (saved) {
     try {
-      const parsed = JSON.parse(saved)
-      scanHistory.value = parsed.map((item: any) => ({
+      const parsed = JSON.parse(saved) as Array<Partial<ScanRecord> & { timestamp: string }>
+      scanHistory.value = parsed.map(item => ({
         ...item,
         timestamp: new Date(item.timestamp),
         // Backward compatibility: default to 'not_found' if lookupStatus is missing (old format)
-        lookupStatus: item.lookupStatus || 'not_found',
-      }))
+        lookupStatus: item.lookupStatus || 'not_found'
+      })) as ScanRecord[]
 
       // Re-trigger lookup for records that were in 'loading' state when the page was refreshed
       for (const record of scanHistory.value) {
@@ -248,16 +254,16 @@ watch(selectedLocation, (loc) => {
 const lookupProduct = async (barcode: string, index: number) => {
   const scan = scanHistory.value[index]
   if (!scan) return
-  
+
   scan.lookupStatus = 'loading'
-  
-  const apiEndpoint = selectedManufacturer.value === 'hoffmann' 
-    ? '/api/scrape-hoffmann' 
+
+  const apiEndpoint = selectedManufacturer.value === 'hoffmann'
+    ? '/api/scrape-hoffmann'
     : '/api/scrape-sandvik'
-  
+
   try {
-    const response = await $fetch<{ success: boolean; data: ScrapedData }>(`${apiEndpoint}?barcode=${encodeURIComponent(barcode)}`)
-    
+    const response = await $fetch<{ success: boolean, data: ScrapedData }>(`${apiEndpoint}?barcode=${encodeURIComponent(barcode)}`)
+
     if (response.success && response.data) {
       scrapedData.value = response.data
       partForm.value = {
@@ -276,27 +282,27 @@ const lookupProduct = async (barcode: string, index: number) => {
       const savedCategoryPk = localStorage.getItem('inventree_last_category')
       if (savedCategoryPk) {
         const pk = Number(savedCategoryPk)
-        selectedCategory.value = categories.value.find(c => c.pk === pk) || null
+        selectedCategory.value = categories.value.find(c => c.pk === pk) || undefined
       } else {
-        selectedCategory.value = null
+        selectedCategory.value = undefined
       }
 
       const savedLocationPk = localStorage.getItem('inventree_last_location')
       if (savedLocationPk) {
         const pk = Number(savedLocationPk)
-        selectedLocation.value = locations.value.find(l => l.pk === pk) || null
+        selectedLocation.value = locations.value.find(l => l.pk === pk) || undefined
       } else {
-        selectedLocation.value = null
+        selectedLocation.value = undefined
       }
 
       isModalOpen.value = true
       toast.add({ title: 'Product found', color: 'success' })
     }
   } catch (error) {
-    toast.add({ 
-      title: 'Lookup failed', 
+    toast.add({
+      title: 'Lookup failed',
       description: error instanceof Error ? error.message : 'Could not fetch product data',
-      color: 'error' 
+      color: 'error'
     })
   } finally {
     scan.lookupStatus = 'not_found'
@@ -306,21 +312,21 @@ const lookupProduct = async (barcode: string, index: number) => {
 const createPart = async () => {
   const inventree = useInventreeApi()
   isCreating.value = true
-  
+
   try {
     // Check if part already exists
     const check = await inventree.checkPartExists(partForm.value.IPN, partForm.value.name)
-    
+
     if (check.exists) {
-      toast.add({ 
-        title: 'Part already exists', 
+      toast.add({
+        title: 'Part already exists',
         description: `A part with ${check.field} "${check.field === 'IPN' ? partForm.value.IPN : partForm.value.name}" already exists`,
-        color: 'warning' 
+        color: 'warning'
       })
       isCreating.value = false
       return
     }
-    
+
     // Create the part
     const partData: CreatePartDto = {
       name: partForm.value.name,
@@ -330,9 +336,9 @@ const createPart = async () => {
       remote_image: partForm.value.image || '',
       category: selectedCategory.value?.pk ?? null
     }
-    
+
     const response = await inventree.createPart(partData)
-    
+
     toast.add({ title: 'Part created successfully', color: 'success' })
 
     // Create initial stock if checkbox is checked
@@ -389,26 +395,37 @@ const createPart = async () => {
         reLookupBarcode(record, scanHistory)
       }
     }
-  } catch (error: any) {
-    const errorData = error?.data || error?.response?.data
+  } catch (error: unknown) {
     let errorMessage = 'Unknown error'
-    
-    if (errorData?.non_field_errors) {
-      errorMessage = errorData.non_field_errors[0]
-    } else if (errorData?.detail) {
-      errorMessage = errorData.detail
-    } else if (errorData?.IPN) {
-      errorMessage = `IPN: ${errorData.IPN[0]}`
-    } else if (errorData?.name) {
-      errorMessage = `Name: ${errorData.name[0]}`
-    } else if (error instanceof Error) {
-      errorMessage = error.message
+    const errorData = isApiError(error)
+      ? (error.data as Record<string, unknown> | undefined)
+      : undefined
+
+    if (errorData) {
+      const nonFieldErrors = errorData.non_field_errors as string[] | undefined
+      const detail = errorData.detail as string | undefined
+      const ipnErrors = errorData.IPN as string[] | undefined
+      const nameErrors = errorData.name as string[] | undefined
+
+      if (nonFieldErrors?.length) {
+        errorMessage = nonFieldErrors[0]!
+      } else if (detail) {
+        errorMessage = detail
+      } else if (ipnErrors?.length) {
+        errorMessage = `IPN: ${ipnErrors[0]}`
+      } else if (nameErrors?.length) {
+        errorMessage = `Name: ${nameErrors[0]}`
+      } else {
+        errorMessage = extractApiError(error, errorMessage)
+      }
+    } else {
+      errorMessage = extractApiError(error, errorMessage)
     }
-    
-    toast.add({ 
-      title: 'Failed to create part', 
+
+    toast.add({
+      title: 'Failed to create part',
       description: errorMessage,
-      color: 'error' 
+      color: 'error'
     })
   } finally {
     isCreating.value = false
@@ -425,12 +442,19 @@ onMounted(() => {
 <template>
   <div class="container mx-auto p-6 max-w-3xl">
     <div class="mb-8">
-      <h1 class="text-2xl font-bold mb-2">Barcode Scanner</h1>
-      <p class="text-gray-600 dark:text-gray-400">Scan barcodes to capture and track them</p>
+      <h1 class="text-2xl font-bold mb-2">
+        Barcode Scanner
+      </h1>
+      <p class="text-gray-600 dark:text-gray-400">
+        Scan barcodes to capture and track them
+      </p>
     </div>
 
     <!-- Scanner Modal -->
-    <UModal v-model:open="isScannerModalOpen" title="Camera Scanner">
+    <UModal
+      v-model:open="isScannerModalOpen"
+      title="Camera Scanner"
+    >
       <template #body>
         <BarcodeScanner
           ref="scannerRef"
@@ -441,7 +465,10 @@ onMounted(() => {
       </template>
       <template #footer>
         <div class="flex justify-end">
-          <UButton variant="ghost" @click="closeScannerModal">
+          <UButton
+            variant="ghost"
+            @click="closeScannerModal"
+          >
             Close
           </UButton>
         </div>
@@ -451,24 +478,26 @@ onMounted(() => {
     <!-- Scanner Input -->
     <UCard class="mb-6">
       <template #header>
-        <h2 class="text-lg font-semibold">Scan Barcode</h2>
+        <h2 class="text-lg font-semibold">
+          Scan Barcode
+        </h2>
       </template>
 
       <div class="space-y-4">
         <div>
           <label class="block text-sm font-medium mb-1">Manufacturer</label>
           <div class="flex gap-2">
-            <UButton 
-              @click="selectedManufacturer = 'hoffmann'"
+            <UButton
               :variant="selectedManufacturer === 'hoffmann' ? 'solid' : 'outline'"
               size="sm"
+              @click="selectedManufacturer = 'hoffmann'"
             >
               Hoffmann Group
             </UButton>
-            <UButton 
-              @click="selectedManufacturer = 'sandvik'"
+            <UButton
               :variant="selectedManufacturer === 'sandvik' ? 'solid' : 'outline'"
               size="sm"
+              @click="selectedManufacturer = 'sandvik'"
             >
               Sandvik Coromant
             </UButton>
@@ -477,18 +506,20 @@ onMounted(() => {
 
         <div>
           <label class="block text-sm font-medium mb-1">Barcode</label>
-          <p class="text-xs text-gray-500 mb-2">Focus here and scan with your barcode scanner</p>
+          <p class="text-xs text-gray-500 mb-2">
+            Focus here and scan with your barcode scanner
+          </p>
           <div class="flex gap-2 items-center">
             <UTooltip text="Scan with camera">
               <UButton
                 icon="i-lucide-camera"
                 size="lg"
                 variant="outline"
-                @click="openScannerModal"
                 aria-label="Scan with camera"
+                @click="openScannerModal"
               />
             </UTooltip>
-            <UInput 
+            <UInput
               ref="barcodeInputRef"
               v-model="barcodeInput"
               placeholder="Scan or type barcode..."
@@ -498,7 +529,10 @@ onMounted(() => {
               @keyup.enter="handleScan"
             >
               <template #trailing>
-                <UKbd value="/" size="sm" />
+                <UKbd
+                  value="/"
+                  size="sm"
+                />
               </template>
             </UInput>
           </div>
@@ -510,14 +544,16 @@ onMounted(() => {
     <UCard class="mb-6">
       <template #header>
         <div class="flex items-center justify-between">
-          <h2 class="text-lg font-semibold">Scan History ({{ scanHistory.length }})</h2>
+          <h2 class="text-lg font-semibold">
+            Scan History ({{ scanHistory.length }})
+          </h2>
           <UTooltip text="Clear all scan history">
-            <UButton 
+            <UButton
               v-if="scanHistory.length > 0"
-              @click="clearHistory" 
-              variant="ghost" 
-              size="xs" 
+              variant="ghost"
+              size="xs"
               icon="i-lucide-trash-2"
+              @click="clearHistory"
             >
               Clear
             </UButton>
@@ -525,11 +561,17 @@ onMounted(() => {
         </div>
       </template>
 
-      <div v-if="scanHistory.length === 0" class="text-center py-8 text-gray-500">
+      <div
+        v-if="scanHistory.length === 0"
+        class="text-center py-8 text-gray-500"
+      >
         No scans yet. Scan a barcode to get started.
       </div>
 
-      <div v-else class="space-y-2">
+      <div
+        v-else
+        class="space-y-2"
+      >
         <div
           v-for="(scan, index) in scanHistory"
           :key="index"
@@ -538,47 +580,81 @@ onMounted(() => {
             'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700': scan.lookupStatus === 'loading',
             'bg-green-50 dark:bg-green-900/20 border-green-500 dark:border-green-700': scan.lookupStatus === 'found',
             'bg-amber-50 dark:bg-amber-900/20 border-amber-500 dark:border-amber-700': scan.lookupStatus === 'not_found',
-            'bg-red-50 dark:bg-red-900/20 border-red-500 dark:border-red-700': scan.lookupStatus === 'error',
+            'bg-red-50 dark:bg-red-900/20 border-red-500 dark:border-red-700': scan.lookupStatus === 'error'
           }"
         >
           <!-- Loading State -->
-          <div v-if="scan.lookupStatus === 'loading'" class="flex items-center justify-between">
+          <div
+            v-if="scan.lookupStatus === 'loading'"
+            class="flex items-center justify-between"
+          >
             <div class="flex items-center gap-3 flex-1">
-              <UIcon name="i-lucide-loader-2" class="w-5 h-5 animate-spin text-gray-400" />
+              <UIcon
+                name="i-lucide-loader-2"
+                class="w-5 h-5 animate-spin text-gray-400"
+              />
               <div>
-                <p class="font-mono font-semibold">{{ scan.barcode }}</p>
-                <p class="text-xs text-gray-500">{{ formatTime(scan.timestamp) }}</p>
+                <p class="font-mono font-semibold">
+                  {{ scan.barcode }}
+                </p>
+                <p class="text-xs text-gray-500">
+                  {{ formatTime(scan.timestamp) }}
+                </p>
               </div>
             </div>
             <UTooltip text="Remove from history">
               <UButton
-                @click="removeHistoryItem(index)"
                 size="xs"
                 color="error"
                 variant="ghost"
                 icon="i-lucide-x"
                 aria-label="Remove scan from history"
+                @click="removeHistoryItem(index)"
               />
             </UTooltip>
           </div>
 
           <!-- Found State -->
-          <div v-else-if="scan.lookupStatus === 'found'" class="flex items-center justify-between gap-3">
+          <div
+            v-else-if="scan.lookupStatus === 'found'"
+            class="flex items-center justify-between gap-3"
+          >
             <div class="flex items-center gap-3 flex-1 min-w-0">
               <img
                 v-if="scan.part?.thumbnail || scan.part?.image"
                 :src="resolveImageUrl(scan.part?.thumbnail || scan.part?.image)"
                 :alt="scan.part?.name"
                 class="w-12 h-12 object-cover rounded flex-shrink-0"
+              >
+              <UIcon
+                v-else
+                name="i-lucide-package"
+                class="w-12 h-12 text-gray-400 flex-shrink-0"
               />
-              <UIcon v-else name="i-lucide-package" class="w-12 h-12 text-gray-400 flex-shrink-0" />
               <div class="min-w-0 flex-1">
                 <div class="flex items-center gap-2 flex-wrap">
-                  <p class="font-semibold truncate">{{ scan.part?.name }}</p>
-                  <UBadge color="success" size="xs">Found</UBadge>
+                  <p class="font-semibold truncate">
+                    {{ scan.part?.name }}
+                  </p>
+                  <UBadge
+                    color="success"
+                    size="xs"
+                  >
+                    Found
+                  </UBadge>
                 </div>
-                <p v-if="scan.part?.IPN" class="text-xs text-gray-500">IPN: {{ scan.part.IPN }}</p>
-                <p v-if="scan.part?.description" class="text-xs text-gray-500 truncate">{{ scan.part.description }}</p>
+                <p
+                  v-if="scan.part?.IPN"
+                  class="text-xs text-gray-500"
+                >
+                  IPN: {{ scan.part.IPN }}
+                </p>
+                <p
+                  v-if="scan.part?.description"
+                  class="text-xs text-gray-500 truncate"
+                >
+                  {{ scan.part.description }}
+                </p>
                 <p class="text-xs text-gray-500">
                   Stock: {{ scan.part?.in_stock ?? 'N/A' }} | Barcode: {{ scan.barcode }}
                 </p>
@@ -594,15 +670,17 @@ onMounted(() => {
               </div>
             </div>
             <div class="flex items-center gap-2 flex-shrink-0">
-              <p class="text-xs text-gray-500 hidden sm:block">{{ formatTime(scan.timestamp) }}</p>
+              <p class="text-xs text-gray-500 hidden sm:block">
+                {{ formatTime(scan.timestamp) }}
+              </p>
               <UTooltip text="Remove from history">
                 <UButton
-                  @click="removeHistoryItem(index)"
                   size="xs"
                   color="error"
                   variant="ghost"
                   icon="i-lucide-x"
                   aria-label="Remove scan from history"
+                  @click="removeHistoryItem(index)"
                 />
               </UTooltip>
             </div>
@@ -613,29 +691,38 @@ onMounted(() => {
             <div class="flex items-center justify-between">
               <div class="flex-1">
                 <div class="flex items-center gap-2">
-                  <p class="font-mono font-semibold">{{ scan.barcode }}</p>
-                  <UBadge color="warning" size="xs">Not Found</UBadge>
+                  <p class="font-mono font-semibold">
+                    {{ scan.barcode }}
+                  </p>
+                  <UBadge
+                    color="warning"
+                    size="xs"
+                  >
+                    Not Found
+                  </UBadge>
                 </div>
-                <p class="text-xs text-gray-500">{{ formatTime(scan.timestamp) }}</p>
+                <p class="text-xs text-gray-500">
+                  {{ formatTime(scan.timestamp) }}
+                </p>
               </div>
               <UTooltip text="Remove from history">
                 <UButton
-                  @click="removeHistoryItem(index)"
                   size="xs"
                   color="error"
                   variant="ghost"
                   icon="i-lucide-x"
                   aria-label="Remove scan from history"
+                  @click="removeHistoryItem(index)"
                 />
               </UTooltip>
             </div>
             <div class="flex items-center gap-2 mt-2">
               <UTooltip text="Search manufacturer catalog for this barcode">
                 <UButton
-                  @click="lookupProduct(scan.barcode, index)"
                   size="xs"
                   color="primary"
                   icon="i-lucide-search"
+                  @click="lookupProduct(scan.barcode, index)"
                 >
                   Manufacturer Lookup
                 </UButton>
@@ -657,7 +744,7 @@ onMounted(() => {
                   color="neutral"
                   variant="outline"
                   icon="i-lucide-refresh-cw"
-                  @click="reLookupBarcode(scan, scanHistory)"
+                  @click="recheckScan(scan)"
                 >
                   Re-check
                 </UButton>
@@ -670,20 +757,31 @@ onMounted(() => {
             <div class="flex items-center justify-between">
               <div class="flex-1">
                 <div class="flex items-center gap-2">
-                  <p class="font-mono font-semibold">{{ scan.barcode }}</p>
-                  <UBadge color="error" size="xs">Error</UBadge>
+                  <p class="font-mono font-semibold">
+                    {{ scan.barcode }}
+                  </p>
+                  <UBadge
+                    color="error"
+                    size="xs"
+                  >
+                    Error
+                  </UBadge>
                 </div>
-                <p class="text-xs text-red-600 dark:text-red-400">{{ scan.errorMessage }}</p>
-                <p class="text-xs text-gray-500">{{ formatTime(scan.timestamp) }}</p>
+                <p class="text-xs text-red-600 dark:text-red-400">
+                  {{ scan.errorMessage }}
+                </p>
+                <p class="text-xs text-gray-500">
+                  {{ formatTime(scan.timestamp) }}
+                </p>
               </div>
               <UTooltip text="Remove from history">
                 <UButton
-                  @click="removeHistoryItem(index)"
                   size="xs"
                   color="error"
                   variant="ghost"
                   icon="i-lucide-x"
                   aria-label="Remove scan from history"
+                  @click="removeHistoryItem(index)"
                 />
               </UTooltip>
             </div>
@@ -694,7 +792,7 @@ onMounted(() => {
                   color="neutral"
                   variant="outline"
                   icon="i-lucide-refresh-cw"
-                  @click="reLookupBarcode(scan, scanHistory)"
+                  @click="recheckScan(scan)"
                 >
                   Retry
                 </UButton>
@@ -706,14 +804,24 @@ onMounted(() => {
     </UCard>
 
     <!-- Create Part Modal -->
-    <UModal v-model:open="isModalOpen" title="Create Part from Scraped Data" :ui="{ content: 'sm:max-w-4xl' }">
+    <UModal
+      v-model:open="isModalOpen"
+      title="Create Part from Scraped Data"
+      :ui="{ content: 'sm:max-w-4xl' }"
+    >
       <template #body>
         <div class="flex gap-6">
           <!-- Image Preview and Category - Left Side -->
           <div class="flex-shrink-0 w-64 space-y-4">
             <div v-if="partForm.image">
-              <p class="text-sm font-medium mb-2">Image Preview:</p>
-              <img :src="partForm.image" alt="Product preview" class="w-full rounded border" />
+              <p class="text-sm font-medium mb-2">
+                Image Preview:
+              </p>
+              <img
+                :src="partForm.image"
+                alt="Product preview"
+                class="w-full rounded border"
+              >
             </div>
 
             <div>
@@ -747,42 +855,75 @@ onMounted(() => {
           <div class="flex-1 space-y-4">
             <div>
               <label class="block text-sm font-medium mb-1">Name *</label>
-              <UInput v-model="partForm.name" size="lg" class="w-full" />
+              <UInput
+                v-model="partForm.name"
+                size="lg"
+                class="w-full"
+              />
             </div>
 
             <div>
               <label class="block text-sm font-medium mb-1">IPN (Internal Part Number) *</label>
-              <UInput v-model="partForm.IPN" size="lg" class="w-full" />
+              <UInput
+                v-model="partForm.IPN"
+                size="lg"
+                class="w-full"
+              />
             </div>
 
             <div>
               <label class="block text-sm font-medium mb-1">Description</label>
-              <UTextarea v-model="partForm.description" :rows="6" size="lg" class="w-full" />
+              <UTextarea
+                v-model="partForm.description"
+                :rows="6"
+                size="lg"
+                class="w-full"
+              />
             </div>
 
             <div>
               <label class="block text-sm font-medium mb-1">Link</label>
-              <p class="text-xs text-gray-500 mb-1">Auto-generated from article number</p>
-              <UInput v-model="partForm.link" readonly size="lg" class="w-full" />
+              <p class="text-xs text-gray-500 mb-1">
+                Auto-generated from article number
+              </p>
+              <UInput
+                v-model="partForm.link"
+                readonly
+                size="lg"
+                class="w-full"
+              />
             </div>
 
             <div>
               <label class="block text-sm font-medium mb-1">Image URL</label>
-              <UInput v-model="partForm.image" size="lg" class="w-full" />
+              <UInput
+                v-model="partForm.image"
+                size="lg"
+                class="w-full"
+              />
             </div>
 
-            <USeparator label="Initial Stock" class="mt-4" />
+            <USeparator
+              label="Initial Stock"
+              class="mt-4"
+            />
 
             <div class="space-y-3 mt-3">
               <div class="flex items-center gap-2">
                 <UCheckbox v-model="createStock" />
                 <div>
                   <label class="text-sm font-medium">Create Initial Stock</label>
-                  <p class="text-xs text-gray-500">Add stock when creating this part</p>
+                  <p class="text-xs text-gray-500">
+                    Add stock when creating this part
+                  </p>
                 </div>
               </div>
 
-              <UFormField v-if="createStock" label="Stock Quantity" description="Number of units to add">
+              <UFormField
+                v-if="createStock"
+                label="Stock Quantity"
+                description="Number of units to add"
+              >
                 <UInput
                   ref="stockQuantityInput"
                   v-model.number="stockQuantity"
@@ -791,7 +932,10 @@ onMounted(() => {
                 />
               </UFormField>
 
-              <div v-if="createStock" class="flex items-center gap-2 mt-3">
+              <div
+                v-if="createStock"
+                class="flex items-center gap-2 mt-3"
+              >
                 <UCheckbox v-model="linkBarcode" />
                 <div>
                   <label class="text-sm font-medium">Link Barcode to Stock Item</label>
@@ -807,10 +951,17 @@ onMounted(() => {
 
       <template #footer>
         <div class="flex justify-end gap-2">
-          <UButton @click="isModalOpen = false" variant="ghost">
+          <UButton
+            variant="ghost"
+            @click="isModalOpen = false"
+          >
             Cancel
           </UButton>
-          <UButton @click="createPart" :loading="isCreating" color="primary">
+          <UButton
+            :loading="isCreating"
+            color="primary"
+            @click="createPart"
+          >
             Create Part
           </UButton>
         </div>

@@ -29,12 +29,12 @@ export function createAddStockMockApi(
     if (url.startsWith('/stock/?part=') && url.includes('in_stock=true')) {
       return existingStock
     }
-    
+
     // Handle addToExistingStock bulk endpoint call
     if (url === '/stock/add/' && options?.method === 'POST') {
       return { success: true }
     }
-    
+
     // Handle fetch updated stock item after add
     if (url.startsWith('/stock/?pk=')) {
       const updatedItem: StockItem = {
@@ -44,11 +44,12 @@ export function createAddStockMockApi(
         location: null,
         serial: null,
         batch: null,
+        barcode_hash: '',
         notes: notes ?? ''
       }
       return [updatedItem]
     }
-    
+
     // Handle create new stock item call
     if (url === '/stock/' && options?.method === 'POST') {
       const newItem: StockItem = {
@@ -58,11 +59,12 @@ export function createAddStockMockApi(
         location: null,
         serial: null,
         batch: null,
+        barcode_hash: '',
         notes: notes ?? ''
       }
       return newItem
     }
-    
+
     throw new Error(`Unexpected API call: ${url}`)
   })
 
@@ -79,15 +81,15 @@ export function createGetStockItemsErrorMockApi(errorMessage: string) {
     if (url.startsWith('/stock/?part=') && url.includes('in_stock=true')) {
       throw new Error(errorMessage)
     }
-    
+
     if (url === '/stock/add/' && options?.method === 'POST') {
       throw new Error('addToExistingStock should not be called when getStockItems fails')
     }
-    
+
     if (url === '/stock/' && options?.method === 'POST') {
       throw new Error('POST /stock/ should not be called when getStockItems fails')
     }
-    
+
     throw new Error(`Unexpected API call: ${url}`)
   })
 
@@ -107,15 +109,15 @@ export function createAddToExistingErrorMockApi(
     if (url.startsWith('/stock/?part=') && url.includes('in_stock=true')) {
       return existingStock
     }
-    
+
     if (url === '/stock/add/' && options?.method === 'POST') {
       throw new Error(errorMessage)
     }
-    
+
     if (url === '/stock/' && options?.method === 'POST') {
       throw new Error('POST /stock/ should not be called when addToExistingStock fails')
     }
-    
+
     throw new Error(`Unexpected API call: ${url}`)
   })
 

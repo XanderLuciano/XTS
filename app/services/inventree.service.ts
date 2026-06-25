@@ -1,6 +1,11 @@
 import type { Part, StockItem, CreatePartDto, AddStockDto, RemoveStockDto, AddToExistingStockDto, AdjustStockParams, PartCategory, StockLocation, BomItem, CreateBomItemDto, CreateAssemblyDto } from '~/types/inventree'
+import { extractApiError, extractApiErrorStatus } from '~/utils/apiError'
 
 export class InventreeService {
+  // The injected ofetch client returns dynamically-shaped InvenTree responses.
+  // Each method narrows/shapes what it needs; fully typing every endpoint
+  // response is a separate, larger effort.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   constructor(private api: any) {}
 
   /**
@@ -13,7 +18,7 @@ export class InventreeService {
         method: 'POST',
         body: { barcode }
       })
-      
+
       // InvenTree barcode API returns different structures based on what was found
       // If a part is found directly or via stock item
       if (response?.part) {
@@ -23,11 +28,11 @@ export class InventreeService {
         }
         return response.part as Part
       }
-      
+
       // If a stock item was found, get its part
       if (response?.stockitem) {
-        const stockItemPk = typeof response.stockitem === 'number' 
-          ? response.stockitem 
+        const stockItemPk = typeof response.stockitem === 'number'
+          ? response.stockitem
           : response.stockitem.pk
         const stockItem = await this.api(`/stock/${stockItemPk}/`)
         if (stockItem?.part) {
@@ -35,16 +40,16 @@ export class InventreeService {
           return await this.getPartById(partPk)
         }
       }
-      
+
       // If a stock location was found, we can't get a part from it
       if (response?.stocklocation) {
         return null
       }
-      
+
       return null
-    } catch (error: any) {
+    } catch (error: unknown) {
       // 400 error typically means barcode not found
-      if (error?.status === 400 || error?.statusCode === 400) {
+      if (extractApiErrorStatus(error) === 400) {
         return null
       }
       throw error
@@ -67,7 +72,7 @@ export class InventreeService {
    * List parts with pagination and optional search filtering.
    * Returns results array and total count for pagination.
    */
-  async listParts(params: { search?: string; limit?: number; offset?: number } = {}): Promise<{ results: Part[]; count: number }> {
+  async listParts(params: { search?: string, limit?: number, offset?: number } = {}): Promise<{ results: Part[], count: number }> {
     const query: Record<string, string | number> = {}
     if (params.search) query.search = params.search
     if (params.limit != null) query.limit = params.limit
@@ -120,7 +125,7 @@ export class InventreeService {
     return Array.isArray(response) ? response : response?.results || []
   }
 
-  async checkPartExists(ipn: string, name: string): Promise<{ exists: boolean; field?: string }> {
+  async checkPartExists(ipn: string, _name: string): Promise<{ exists: boolean, field?: string }> {
     // Only check IPN since InvenTree API doesn't support exact name filtering
     const byIPN = await this.getPartByIPN(ipn)
     if (byIPN.length > 0) {
@@ -151,7 +156,7 @@ export class InventreeService {
 
   async addToExistingStock(stockItemId: number, data: AddToExistingStockDto): Promise<StockItem> {
     // InvenTree uses a bulk endpoint: POST /stock/add/ with items array
-    const response = await this.api('/stock/add/', {
+    await this.api('/stock/add/', {
       method: 'POST',
       body: {
         items: [
@@ -163,7 +168,7 @@ export class InventreeService {
         notes: data.notes || ''
       }
     })
-    
+
     // The bulk endpoint returns success status, so we need to fetch the updated stock item
     const updatedItems = await this.api(`/stock/?pk=${stockItemId}`)
     const items = Array.isArray(updatedItems) ? updatedItems : updatedItems?.results || []
@@ -176,7 +181,7 @@ export class InventreeService {
   async addStock(data: AddStockDto): Promise<StockItem> {
     // 1. Check for existing stock items
     const existingItems = await this.getStockItems(data.part)
-    
+
     // 2. If existing stock found, add to first item
     if (existingItems.length > 0) {
       const firstItem = existingItems[0]
@@ -188,7 +193,7 @@ export class InventreeService {
         notes: data.notes
       })
     }
-    
+
     // 3. Otherwise, create new stock item
     const created = await this.api('/stock/', {
       method: 'POST',
@@ -290,18 +295,18 @@ export class InventreeService {
           notes: params.notes || ''
         }
       })
-    } catch (error: any) {
+    } catch (error: unknown) {
       const action = delta > 0 ? 'add' : 'remove'
       throw new Error(
-        `Failed to ${action} stock for item ${params.stockItemPk}: ${error?.message || error}`
+        `Failed to ${action} stock for item ${params.stockItemPk}: ${extractApiError(error, String(error))}`
       )
     }
   }
 
   /**
-   * Update a stock item's fields (e.g. batch/vendor).
+   * Update a stock item's fields (e.g. batch/vendor/location).
    */
-  async updateStockItem(stockItemPk: number, data: { batch?: string | null; notes?: string }): Promise<void> {
+  async updateStockItem(stockItemPk: number, data: { batch?: string | null, notes?: string, location?: number | null }): Promise<void> {
     await this.api(`/stock/${stockItemPk}/`, {
       method: 'PATCH',
       body: data
@@ -309,9 +314,31 @@ export class InventreeService {
   }
 
   /**
+   * Transfer a stock item to a different location using InvenTree's bulk
+   * transfer endpoint. This records a tracking entry for the move, unlike a
+   * plain PATCH of the location field.
+   */
+  async transferStock(stockItemPk: number, location: number | null, notes?: string): Promise<void> {
+    try {
+      await this.api('/stock/transfer/', {
+        method: 'POST',
+        body: {
+          items: [{ pk: stockItemPk }],
+          location,
+          notes: notes || ''
+        }
+      })
+    } catch (error: unknown) {
+      throw new Error(
+        `Failed to transfer stock item ${stockItemPk}: ${extractApiError(error, String(error))}`
+      )
+    }
+  }
+
+  /**
    * Update a part's fields.
    */
-  async updatePart(partPk: number, data: { name?: string; IPN?: string; revision?: string; description?: string; category?: number | null }): Promise<void> {
+  async updatePart(partPk: number, data: { name?: string, IPN?: string, revision?: string, description?: string, category?: number | null }): Promise<void> {
     await this.api(`/part/${partPk}/`, {
       method: 'PATCH',
       body: data
@@ -343,7 +370,7 @@ export class InventreeService {
   /**
    * List all assembly parts (parts with assembly=true).
    */
-  async listAssemblies(params: { search?: string; limit?: number; offset?: number } = {}): Promise<{ results: Part[]; count: number }> {
+  async listAssemblies(params: { search?: string, limit?: number, offset?: number } = {}): Promise<{ results: Part[], count: number }> {
     const query: Record<string, string | number | boolean> = { assembly: true }
     if (params.search) query.search = params.search
     if (params.limit != null) query.limit = params.limit
@@ -443,7 +470,7 @@ export class InventreeService {
   /**
    * Update a BOM item (e.g. change quantity).
    */
-  async updateBomItem(bomItemId: number, data: { quantity?: number; reference?: string; note?: string }): Promise<void> {
+  async updateBomItem(bomItemId: number, data: { quantity?: number, reference?: string, note?: string }): Promise<void> {
     await this.api(`/bom/${bomItemId}/`, {
       method: 'PATCH',
       body: data
@@ -456,5 +483,4 @@ export class InventreeService {
   async deleteAssembly(partPk: number): Promise<void> {
     await this.api(`/part/${partPk}/`, { method: 'DELETE' })
   }
-
 }

@@ -30,10 +30,10 @@ export interface BarcodeOptions {
   narrowBarWidth?: number
 }
 
-export type LabelElement =
-  | { type: 'text'; content: string; options: TextOptions }
-  | { type: 'qrcode'; content: string; options: QROptions }
-  | { type: 'barcode'; content: string; options: BarcodeOptions }
+export type LabelElement
+  = | { type: 'text', content: string, options: TextOptions }
+    | { type: 'qrcode', content: string, options: QROptions }
+    | { type: 'barcode', content: string, options: BarcodeOptions }
 
 export interface LabelData {
   barcode: string
@@ -115,7 +115,7 @@ export function composeLabelElements(data: LabelData, labelWidth?: number, label
  */
 export function elementsToZpl(elements: LabelElement[]): string {
   let zpl = '^XA\n' // Start format
-  zpl += '^CI28\n'  // UTF-8 character set
+  zpl += '^CI28\n' // UTF-8 character set
 
   for (const el of elements) {
     switch (el.type) {

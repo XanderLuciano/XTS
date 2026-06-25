@@ -5,6 +5,7 @@
  * the paired device across page reloads (browser handles re-pairing).
  */
 import { ref, computed } from 'vue'
+import { extractApiError } from '~/utils/apiError'
 
 export interface LocalPrinterState {
   device: USBDevice | null
@@ -88,19 +89,19 @@ export function useLocalPrinter() {
       const device = await navigator.usb.requestDevice({
         filters: [
           { vendorId: 0x0A5F }, // Zebra Technologies
-          { vendorId: 0x04B8 }  // Seiko Epson (some label printers)
+          { vendorId: 0x04B8 } // Seiko Epson (some label printers)
         ]
       })
 
       await openDevice(device)
       return true
-    } catch (error: any) {
-      if (error.name === 'NotFoundError') {
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name === 'NotFoundError') {
         // User cancelled the picker — not an error
         lastError.value = null
         return false
       }
-      lastError.value = error.message || 'Failed to connect to printer'
+      lastError.value = extractApiError(error, 'Failed to connect to printer')
       return false
     } finally {
       isConnecting.value = false
@@ -205,11 +206,11 @@ export function useLocalPrinter() {
       }
 
       return true
-    } catch (error: any) {
-      lastError.value = error.message || 'Failed to send data to printer'
+    } catch (error: unknown) {
+      lastError.value = extractApiError(error, 'Failed to send data to printer')
 
       // If the device was disconnected, clean up state
-      if (error.name === 'NotFoundError' || error.name === 'NetworkError') {
+      if (error instanceof Error && (error.name === 'NotFoundError' || error.name === 'NetworkError')) {
         state.value = null
       }
 

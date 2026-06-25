@@ -27,7 +27,7 @@ interface ScanRecord {
 let mockScanBarcode: ReturnType<typeof vi.fn>
 
 vi.stubGlobal('useInventreeApi', () => ({
-  scanBarcode: (...args: unknown[]) => mockScanBarcode(...args),
+  scanBarcode: (...args: unknown[]) => mockScanBarcode(...args)
 }))
 
 vi.stubGlobal('triggerRef', triggerRef)
@@ -57,7 +57,7 @@ const partArb: fc.Arbitrary<Part> = fc.record({
   in_stock: fc.integer({ min: 0, max: 10000 }),
   link: fc.string({ maxLength: 200 }),
   image: fc.option(fc.string({ minLength: 1, maxLength: 200 }), { nil: null }),
-  thumbnail: fc.option(fc.string({ minLength: 1, maxLength: 200 }), { nil: null }),
+  thumbnail: fc.option(fc.string({ minLength: 1, maxLength: 200 }), { nil: null })
 })
 
 const errorMessageArb = fc.string({ minLength: 1, maxLength: 100 })
@@ -69,10 +69,9 @@ function makeScanRecord(barcode: string, overrides?: Partial<ScanRecord>): ScanR
     barcode,
     timestamp: new Date(),
     lookupStatus: 'loading',
-    ...overrides,
+    ...overrides
   }
 }
-
 
 describe('useScanLookup', () => {
   beforeEach(() => {
@@ -256,7 +255,7 @@ describe('useScanLookup', () => {
       const outcomeArb = fc.oneof(
         partArb.map(p => ({ type: 'found' as const, value: p })),
         fc.constant({ type: 'not_found' as const, value: null }),
-        errorMessageArb.map(m => ({ type: 'error' as const, value: m })),
+        errorMessageArb.map(m => ({ type: 'error' as const, value: m }))
       )
 
       await fc.assert(
@@ -314,7 +313,7 @@ describe('useScanLookup', () => {
             const { reLookupBarcode } = useScanLookup()
             const record = makeScanRecord(barcode, {
               lookupStatus: 'error',
-              errorMessage: prevError,
+              errorMessage: prevError
             })
             const scanHistory: Ref<ScanRecord[]> = ref([record])
 
@@ -347,7 +346,7 @@ describe('useScanLookup', () => {
 
             const { reLookupBarcode } = useScanLookup()
             const record = makeScanRecord(barcode, {
-              lookupStatus: 'not_found',
+              lookupStatus: 'not_found'
             })
             const scanHistory: Ref<ScanRecord[]> = ref([record])
 
@@ -378,7 +377,7 @@ describe('useScanLookup', () => {
             const { reLookupBarcode } = useScanLookup()
             const record = makeScanRecord(barcode, {
               lookupStatus: 'not_found',
-              part: prevPart,
+              part: prevPart
             })
             const scanHistory: Ref<ScanRecord[]> = ref([record])
 

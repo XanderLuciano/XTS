@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import * as fc from 'fast-check'
 import { mount } from '@vue/test-utils'
 import { defineComponent, h, type PropType } from 'vue'
@@ -20,11 +20,11 @@ interface ScanRecord {
 const barcodeValueArb = fc.string({ minLength: 1, maxLength: 100 }).filter(s => s.trim().length > 0).map(s => s.trim())
 const barcodeFormatArb = fc.constantFrom<BarcodeFormat>(
   'ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128',
-  'qr_code', 'data_matrix', 'pdf417', 'aztec',
+  'qr_code', 'data_matrix', 'pdf417', 'aztec'
 )
 
 // Generate trimmed non-empty strings for text fields (DOM .text() trims whitespace)
-const trimmedStringArb = (opts: { minLength?: number; maxLength: number }) =>
+const trimmedStringArb = (opts: { minLength?: number, maxLength: number }) =>
   fc.string({ minLength: opts.minLength ?? 1, maxLength: opts.maxLength })
     .filter(s => s.trim().length > 0)
     .map(s => s.trim())
@@ -46,7 +46,7 @@ const partArb: fc.Arbitrary<Part> = fc.record({
   in_stock: fc.integer({ min: 0, max: 10000 }),
   link: fc.webUrl(),
   image: fc.option(fc.string({ minLength: 1, maxLength: 200 }), { nil: null }),
-  thumbnail: fc.option(fc.string({ minLength: 1, maxLength: 200 }), { nil: null }),
+  thumbnail: fc.option(fc.string({ minLength: 1, maxLength: 200 }), { nil: null })
 })
 
 const errorMessageArb = trimmedStringArb({ maxLength: 100 })
@@ -63,8 +63,8 @@ const ScanHistoryItem = defineComponent({
   props: {
     scan: {
       type: Object as PropType<ScanRecord>,
-      required: true,
-    },
+      required: true
+    }
   },
   emits: ['manufacturer-lookup', 'create-part', 're-check', 'retry', 'remove'],
   setup(props, { emit }) {
@@ -77,7 +77,7 @@ const ScanHistoryItem = defineComponent({
         loading: 'bg-gray-50 border-gray-200',
         found: 'bg-green-50 border-green-500',
         not_found: 'bg-amber-50 border-amber-500',
-        error: 'bg-red-50 border-red-500',
+        error: 'bg-red-50 border-red-500'
       }
 
       const children: ReturnType<typeof h>[] = []
@@ -87,8 +87,8 @@ const ScanHistoryItem = defineComponent({
           h('div', { class: 'loading-state' }, [
             h('span', { class: 'spinner' }, '⏳'),
             h('p', { class: 'barcode' }, scan.barcode),
-            h('p', { class: 'timestamp' }, formatTime(scan.timestamp)),
-          ]),
+            h('p', { class: 'timestamp' }, formatTime(scan.timestamp))
+          ])
         )
       } else if (scan.lookupStatus === 'found') {
         const partChildren: ReturnType<typeof h>[] = []
@@ -98,8 +98,8 @@ const ScanHistoryItem = defineComponent({
             h('img', {
               src: scan.part.thumbnail || scan.part.image,
               alt: scan.part.name,
-              class: 'part-image',
-            }),
+              class: 'part-image'
+            })
           )
         } else {
           partChildren.push(h('span', { class: 'fallback-icon' }, '📦'))
@@ -114,8 +114,8 @@ const ScanHistoryItem = defineComponent({
             h('p', { class: 'part-stock' }, `Stock: ${scan.part?.in_stock ?? 'N/A'}`),
             scan.part?.link
               ? h('a', { href: scan.part.link, class: 'part-link', target: '_blank' }, 'View part ↗')
-              : null,
-          ]),
+              : null
+          ])
         )
 
         children.push(h('div', { class: 'found-state' }, partChildren))
@@ -128,9 +128,9 @@ const ScanHistoryItem = defineComponent({
             h('div', { class: 'actions' }, [
               h('button', { class: 'btn-manufacturer-lookup', onClick: () => emit('manufacturer-lookup') }, 'Manufacturer Lookup'),
               h('button', { class: 'btn-create-part', onClick: () => emit('create-part') }, 'Create Part'),
-              h('button', { class: 'btn-re-check', onClick: () => emit('re-check') }, 'Re-check'),
-            ]),
-          ]),
+              h('button', { class: 'btn-re-check', onClick: () => emit('re-check') }, 'Re-check')
+            ])
+          ])
         )
       } else if (scan.lookupStatus === 'error') {
         children.push(
@@ -140,19 +140,19 @@ const ScanHistoryItem = defineComponent({
             h('p', { class: 'error-message' }, scan.errorMessage),
             h('p', { class: 'timestamp' }, formatTime(scan.timestamp)),
             h('div', { class: 'actions' }, [
-              h('button', { class: 'btn-retry', onClick: () => emit('retry') }, 'Retry'),
-            ]),
-          ]),
+              h('button', { class: 'btn-retry', onClick: () => emit('retry') }, 'Retry')
+            ])
+          ])
         )
       }
 
       return h(
         'div',
         { class: `scan-item ${statusClasses[scan.lookupStatus] || ''}` },
-        children,
+        children
       )
     }
-  },
+  }
 })
 
 // --- Existing property tests ---
@@ -174,7 +174,7 @@ describe('Scan Page - Property Tests', () => {
         const typeLabel = FORMAT_LABELS[format]
 
         const scanHistory = [
-          { barcode: barcodeValue, type: typeLabel, timestamp: new Date() },
+          { barcode: barcodeValue, type: typeLabel, timestamp: new Date() }
         ]
 
         localStorage.setItem('scanHistory', JSON.stringify(scanHistory))
@@ -183,9 +183,9 @@ describe('Scan Page - Property Tests', () => {
         expect(saved).toBeTruthy()
 
         const parsed = JSON.parse(saved!)
-        const restored = parsed.map((item: { barcode: string; type?: string; timestamp: string }) => ({
+        const restored = parsed.map((item: { barcode: string, type?: string, timestamp: string }) => ({
           ...item,
-          timestamp: new Date(item.timestamp),
+          timestamp: new Date(item.timestamp)
         }))
 
         expect(restored).toHaveLength(1)
@@ -194,7 +194,7 @@ describe('Scan Page - Property Tests', () => {
         expect(restored[0].timestamp).toBeInstanceOf(Date)
         expect(restored[0].timestamp.getTime()).toBeGreaterThan(0)
       }),
-      { numRuns: 100 },
+      { numRuns: 100 }
     )
   })
 
@@ -205,24 +205,24 @@ describe('Scan Page - Property Tests', () => {
       fc.property(barcodeValueArb, barcodeFormatArb, (barcodeValue, format) => {
         const typeLabel = FORMAT_LABELS[format]
 
-        const toastCalls: Array<{ title: string; description: string; color: string }> = []
+        const toastCalls: Array<{ title: string, description: string, color: string }> = []
         const mockToast = {
-          add: (payload: { title: string; description: string; color: string }) => {
+          add: (payload: { title: string, description: string, color: string }) => {
             toastCalls.push(payload)
-          },
+          }
         }
 
         mockToast.add({
           title: `Scanned: ${barcodeValue}`,
           description: typeLabel,
-          color: 'success',
+          color: 'success'
         })
 
         expect(toastCalls).toHaveLength(1)
-        expect(toastCalls[0].title).toContain(barcodeValue)
-        expect(toastCalls[0].description).toBe(typeLabel)
+        expect(toastCalls[0]!.title).toContain(barcodeValue)
+        expect(toastCalls[0]!.description).toBe(typeLabel)
       }),
-      { numRuns: 100 },
+      { numRuns: 100 }
     )
   })
 })
@@ -247,7 +247,7 @@ describe('Scan Page - Component Rendering Property Tests', () => {
             barcode: 'TEST-123',
             timestamp: new Date(),
             lookupStatus: 'found',
-            part,
+            part
           }
 
           const wrapper = mount(ScanHistoryItem, { props: { scan } })
@@ -274,7 +274,7 @@ describe('Scan Page - Component Rendering Property Tests', () => {
 
           wrapper.unmount()
         }),
-        { numRuns: 100 },
+        { numRuns: 100 }
       )
     })
   })
@@ -294,7 +294,7 @@ describe('Scan Page - Component Rendering Property Tests', () => {
           const scan: ScanRecord = {
             barcode,
             timestamp: new Date(),
-            lookupStatus: 'not_found',
+            lookupStatus: 'not_found'
           }
 
           const wrapper = mount(ScanHistoryItem, { props: { scan } })
@@ -324,7 +324,7 @@ describe('Scan Page - Component Rendering Property Tests', () => {
 
           wrapper.unmount()
         }),
-        { numRuns: 100 },
+        { numRuns: 100 }
       )
     })
   })
@@ -345,7 +345,7 @@ describe('Scan Page - Component Rendering Property Tests', () => {
             barcode,
             timestamp: new Date(),
             lookupStatus: 'error',
-            errorMessage: errorMsg,
+            errorMessage: errorMsg
           }
 
           const wrapper = mount(ScanHistoryItem, { props: { scan } })
@@ -371,7 +371,7 @@ describe('Scan Page - Component Rendering Property Tests', () => {
 
           wrapper.unmount()
         }),
-        { numRuns: 100 },
+        { numRuns: 100 }
       )
     })
   })
@@ -421,7 +421,7 @@ describe('Scan Page - Unit Tests', () => {
     const fs = await import('fs')
     const path = await import('path')
     const content = fs.readFileSync(path.resolve(__dirname, '../scan.vue'), 'utf-8')
-    expect(content).toContain("e.key === 'Escape'")
+    expect(content).toContain('e.key === \'Escape\'')
     expect(content).toContain('closeScannerModal()')
   })
 
@@ -440,7 +440,7 @@ describe('Scan Page - Unit Tests', () => {
     const path = await import('path')
     const content = fs.readFileSync(path.resolve(__dirname, '../scan.vue'), 'utf-8')
     expect(content).toContain('handleScannerError')
-    expect(content).toContain("@error=\"handleScannerError\"")
-    expect(content).toContain("color: 'error'")
+    expect(content).toContain('@error="handleScannerError"')
+    expect(content).toContain('color: \'error\'')
   })
 })

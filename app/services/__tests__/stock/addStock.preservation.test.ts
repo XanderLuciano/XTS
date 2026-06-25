@@ -70,6 +70,7 @@ describe('addStock - Preservation Property: Existing stock path unchanged', () =
                 location: firstItem.location,
                 serial: firstItem.serial,
                 batch: firstItem.batch,
+                barcode_hash: firstItem.barcode_hash,
                 notes: firstItem.notes
               }
               return [updatedItem]
@@ -78,7 +79,7 @@ describe('addStock - Preservation Property: Existing stock path unchanged', () =
             // POST /stock/ → create new stock (should NOT be called)
             if (url === '/stock/' && options?.method === 'POST') {
               postStockCreateCalled = true
-              return [{ pk: 999, part: partId, quantity, location: null, serial: null, batch: null, notes: '' }]
+              return [{ pk: 999, part: partId, quantity, location: null, serial: null, batch: null, barcode_hash: '', notes: '' }]
             }
 
             throw new Error(`Unexpected API call: ${url}`)
