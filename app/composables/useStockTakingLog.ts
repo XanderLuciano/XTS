@@ -367,10 +367,14 @@ export const useStockTakingLog = (inventreeService?: InventreeService): UseStock
               notes: 'Stock take adjustment via webapp'
             })
           }
-          if (locationChanged) {
+          if (locationChanged && entry.confirmedCount > 0) {
+            // Transfer the full (post-adjustment) quantity to the new location.
+            // Skipped when confirmedCount is 0 — the item is out of stock so a
+            // location move is moot, and the transfer endpoint rejects qty 0.
             await inventreeService!.transferStock(
               entry.stockItemPk,
               entry.confirmedLocation,
+              entry.confirmedCount,
               'Stock take location adjustment via webapp'
             )
           }

@@ -354,13 +354,27 @@ export class InventreeService {
    * Transfer a stock item to a different location using InvenTree's bulk
    * transfer endpoint. This records a tracking entry for the move, unlike a
    * plain PATCH of the location field.
+   *
+   * InvenTree's /stock/transfer/ endpoint requires a non-zero `quantity` for
+   * each item and a non-null destination `location`. When moving an item to
+   * "no location" (location === null) we fall back to a PATCH of the location
+   * field, since the transfer endpoint rejects a null destination.
    */
-  async transferStock(stockItemPk: number, location: number | null, notes?: string): Promise<void> {
+  async transferStock(stockItemPk: number, location: number | null, quantity: number, notes?: string): Promise<void> {
     try {
+      if (location === null) {
+        // Transfer endpoint requires a non-null location; clear it via PATCH instead.
+        await this.api(`/stock/${stockItemPk}/`, {
+          method: 'PATCH',
+          body: { location: null }
+        })
+        return
+      }
+
       await this.api('/stock/transfer/', {
         method: 'POST',
         body: {
-          items: [{ pk: stockItemPk }],
+          items: [{ pk: stockItemPk, quantity }],
           location,
           notes: notes || ''
         }

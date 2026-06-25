@@ -850,7 +850,7 @@ describe('useStockTakingLog — applyStockTake', () => {
     expect(result.skippedItems).toBe(0)
     expect(adjustStock).not.toHaveBeenCalled()
     expect(transferStock).toHaveBeenCalledTimes(1)
-    expect(transferStock).toHaveBeenCalledWith(101, 9, 'Stock take location adjustment via webapp')
+    expect(transferStock).toHaveBeenCalledWith(101, 9, 10, 'Stock take location adjustment via webapp')
   })
 
   it('adjusts stock and transfers location when both changed', async () => {
@@ -872,7 +872,7 @@ describe('useStockTakingLog — applyStockTake', () => {
       newQuantity: 15,
       notes: 'Stock take adjustment via webapp'
     })
-    expect(transferStock).toHaveBeenCalledWith(101, 9, 'Stock take location adjustment via webapp')
+    expect(transferStock).toHaveBeenCalledWith(101, 9, 15, 'Stock take location adjustment via webapp')
   })
 
   it('skips entries where neither count nor location changed', async () => {
