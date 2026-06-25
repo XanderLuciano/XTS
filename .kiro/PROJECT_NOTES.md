@@ -128,6 +128,16 @@ Simplified interface for creating parts in InvenTree with essential fields:
 - Component toggle
 - Purchaseable toggle
 
+**Initial stock options:** quantity, optional vendor (tracked per stock line
+item via the batch field), optional JIRA tickets, an optional **stock location**
+(persisted to localStorage as `create_part_location`), and an optional existing
+barcode.
+
+**Barcode handling:** barcodes are linked to the **stock item** (via
+`/barcode/link/` with the `stockitem` field), not the part. A manually entered
+barcode is validated against InvenTree first, then linked and also written into
+the stock item notes (`barcode:<code>`) so it can be reprinted later.
+
 ### 2. Barcode Scanning & Auto-Import (`/scan`)
 
 **Workflow:**

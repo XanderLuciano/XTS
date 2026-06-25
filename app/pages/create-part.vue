@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { CreatePartDto, AddStockDto, PartCategory, Part, StockItem } from '~/types/inventree'
+import type { CreatePartDto, AddStockDto, PartCategory, Part, StockItem, StockLocation } from '~/types/inventree'
 import type { ComponentPublicInstance } from 'vue'
 import { generateBarcode, setBarcodeInNotes, sanitizeTickets, setTicketsInNotes, classifyBarcodeMatch } from '~/utils/barcode'
 import { sanitizeRevision } from '~/utils/sanitizeRevision'
@@ -73,6 +73,11 @@ onMounted(async () => {
     if (savedCategory) {
       selectedCategory.value = Number(savedCategory)
     }
+
+    const savedLocation = localStorage.getItem('create_part_location')
+    if (savedLocation) {
+      selectedLocation.value = Number(savedLocation)
+    }
   } catch {
     // Corrupt or unavailable storage — keep defaults
   }
@@ -94,6 +99,24 @@ onMounted(async () => {
       isLoadingCategories.value = false
     }
   }
+
+  // Load locations for the optional initial-stock location picker
+  if (locations.value.length === 0) {
+    isLoadingLocations.value = true
+    try {
+      locations.value = await inventree.getLocations()
+      if (selectedLocation.value != null) {
+        const stillValid = locations.value.some(l => l.pk === selectedLocation.value)
+        if (!stillValid) {
+          selectedLocation.value = null
+        }
+      }
+    } catch {
+      // silently fail
+    } finally {
+      isLoadingLocations.value = false
+    }
+  }
 })
 
 // Category state
@@ -104,6 +127,15 @@ const selectedCategory = ref<number | null>(null)
 
 const categoryItems = computed(() =>
   categories.value.map(c => ({ label: c.name, value: c.pk }))
+)
+
+// Location state (optional location for initial stock)
+const locations = ref<StockLocation[]>([])
+const isLoadingLocations = ref(false)
+const selectedLocation = ref<number | null>(null)
+
+const locationItems = computed(() =>
+  locations.value.map(l => ({ label: l.name, value: l.pk }))
 )
 
 const toggleAdvancedOptions = async () => {
@@ -134,6 +166,17 @@ watch(selectedCategory, (val) => {
       localStorage.setItem('create_part_category', String(val))
     } else {
       localStorage.removeItem('create_part_category')
+    }
+  } catch { /* ignore */ }
+})
+
+watch(selectedLocation, (val) => {
+  if (import.meta.server) return
+  try {
+    if (val != null) {
+      localStorage.setItem('create_part_location', String(val))
+    } else {
+      localStorage.removeItem('create_part_location')
     }
   } catch { /* ignore */ }
 })
@@ -322,6 +365,7 @@ const createPart = async () => {
             stockItem = await inventree.createStockItem({
               part: partPk,
               quantity: partForm.stockQuantity,
+              location: selectedLocation.value,
               batch: partForm.vendor,
               notes: stockNotes
             })
@@ -341,6 +385,7 @@ const createPart = async () => {
           const stockData: AddStockDto = {
             part: partPk,
             quantity: partForm.stockQuantity,
+            location: selectedLocation.value,
             notes: stockNotes
           }
           stockItem = await inventree.addStock(stockData)
@@ -607,6 +652,24 @@ const createPart = async () => {
               type="number"
               min="1"
               class="w-full"
+            />
+          </UFormField>
+
+          <!-- Stock Location (optional) -->
+          <UFormField
+            v-if="partForm.createStock"
+            label="Stock Location"
+            description="Optional — where this initial stock is stored"
+          >
+            <USelectMenu
+              :model-value="selectedLocation ?? undefined"
+              :items="locationItems"
+              value-key="value"
+              placeholder="Select a location..."
+              :loading="isLoadingLocations"
+              :search-input="true"
+              class="w-full"
+              @update:model-value="(val: number | null) => selectedLocation = val"
             />
           </UFormField>
 
