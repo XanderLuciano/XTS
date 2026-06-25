@@ -1,4 +1,4 @@
-import type { Part, StockItem, CreatePartDto, AddStockDto, RemoveStockDto, AddToExistingStockDto, AdjustStockParams, PartCategory, StockLocation, BomItem, CreateBomItemDto, CreateAssemblyDto } from '~/types/inventree'
+import type { Part, StockItem, CreatePartDto, AddStockDto, RemoveStockDto, AddToExistingStockDto, AdjustStockParams, PartCategory, StockLocation, CreateStockLocationDto, BomItem, CreateBomItemDto, CreateAssemblyDto } from '~/types/inventree'
 import { extractApiError, extractApiErrorStatus } from '~/utils/apiError'
 
 export class InventreeService {
@@ -123,6 +123,43 @@ export class InventreeService {
   async getLocations(): Promise<StockLocation[]> {
     const response = await this.api('/stock/location/')
     return Array.isArray(response) ? response : response?.results || []
+  }
+
+  /**
+   * Find a stock location by its exact name.
+   * Used to detect duplicate bin locations before creating one.
+   */
+  async findLocationByName(name: string): Promise<StockLocation | null> {
+    const response = await this.api('/stock/location/', {
+      method: 'GET',
+      query: { name }
+    })
+    const results: StockLocation[] = Array.isArray(response) ? response : response?.results || []
+    return results.find(l => l.name === name) || null
+  }
+
+  /**
+   * Create a new stock location.
+   */
+  async createLocation(data: CreateStockLocationDto): Promise<StockLocation> {
+    return await this.api('/stock/location/', {
+      method: 'POST',
+      body: {
+        name: data.name,
+        description: data.description || '',
+        parent: data.parent ?? null
+      }
+    })
+  }
+
+  /**
+   * Link a barcode to a stock location via InvenTree's barcode assignment API.
+   */
+  async linkLocationBarcode(barcode: string, locationPk: number): Promise<void> {
+    await this.api('/barcode/link/', {
+      method: 'POST',
+      body: { barcode, stocklocation: locationPk }
+    })
   }
 
   async checkPartExists(ipn: string, _name: string): Promise<{ exists: boolean, field?: string }> {

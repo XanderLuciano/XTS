@@ -109,6 +109,55 @@ export function composeLabelElements(data: LabelData, labelWidth?: number, label
 }
 
 /**
+ * Compose label elements for a bin location label.
+ * Layout: QR code (encoding the location code) on the left, the location code
+ * shown large on the right with a human-readable description beneath it.
+ * Default: 2x1" label (406x203 dots at 203dpi)
+ */
+export function composeLocationLabelElements(
+  code: string,
+  description: string,
+  labelWidth?: number,
+  labelHeight?: number
+): LabelElement[] {
+  const w = labelWidth || 406
+  const h = labelHeight || 203
+
+  const qrX = Math.round(w * 0.05)
+  const qrY = Math.round(h * 0.15)
+  const qrMag = Math.max(2, Math.min(6, Math.round(Math.min(w * 0.35, h * 0.7) / 33)))
+
+  const textX = Math.round(w * 0.40)
+  const codeY = Math.round(h * 0.2)
+  const descY = Math.round(h * 0.6)
+
+  // Large code text
+  const codeH = Math.max(24, Math.round(h * 0.22))
+  const codeW = Math.max(20, Math.round(codeH * 0.8))
+  // Smaller description text
+  const descH = Math.max(14, Math.round(h * 0.12))
+  const descW = Math.max(12, Math.round(descH * 0.8))
+
+  return [
+    {
+      type: 'qrcode',
+      content: code,
+      options: { x: qrX, y: qrY, magnification: qrMag }
+    },
+    {
+      type: 'text',
+      content: code,
+      options: { x: textX, y: codeY, height: codeH, width: codeW }
+    },
+    {
+      type: 'text',
+      content: description,
+      options: { x: textX, y: descY, height: descH, width: descW }
+    }
+  ]
+}
+
+/**
  * Generate raw ZPL from label elements.
  * This converts our abstract element format into Zebra Programming Language
  * that can be sent directly to a Zebra printer via USB or network.

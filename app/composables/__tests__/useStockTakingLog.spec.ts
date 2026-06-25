@@ -1170,3 +1170,64 @@ describe('useStockTakingLog — property tests', () => {
     )
   })
 })
+
+describe('useStockTakingLog — location scanning', () => {
+  let mockService: ReturnType<typeof createMockInventreeService>
+
+  beforeEach(() => {
+    mockService = createMockInventreeService()
+  })
+
+  it('treats a scanned location code as setting the active location, not adding an entry', async () => {
+    const findLocationByName = vi.spyOn(mockService.service, 'findLocationByName')
+    findLocationByName.mockResolvedValue({ pk: 77, name: '001.002.003.004' })
+
+    const log = useStockTakingLog(mockService.service)
+    const result = log.addItem('001.002.003.004')
+    await flushPromises()
+
+    expect(result).toBeNull()
+    expect(log.logEntries.value).toHaveLength(0)
+    expect(log.activeLocation.value).toEqual({ pk: 77, name: '001.002.003.004' })
+    expect(mockService.scanBarcode).not.toHaveBeenCalled()
+  })
+
+  it('marks the active location with a sentinel pk when not found in InvenTree', async () => {
+    const findLocationByName = vi.spyOn(mockService.service, 'findLocationByName')
+    findLocationByName.mockResolvedValue(null)
+
+    const log = useStockTakingLog(mockService.service)
+    log.addItem('010.020.030.040')
+    await flushPromises()
+
+    expect(log.activeLocation.value?.pk).toBe(-1)
+    expect(log.activeLocation.value?.name).toBe('010.020.030.040')
+  })
+
+  it('applies the active location to subsequently scanned items', async () => {
+    const findLocationByName = vi.spyOn(mockService.service, 'findLocationByName')
+    findLocationByName.mockResolvedValue({ pk: 55, name: '001.002.003.004' })
+    const part = makePart()
+    const stockItem = makeStockItem({ location: 99 })
+    mockService.scanBarcode.mockResolvedValue(part)
+    mockService.getStockItems.mockResolvedValue([stockItem])
+
+    const log = useStockTakingLog(mockService.service)
+    log.addItem('001.002.003.004')
+    await flushPromises()
+
+    const entry = log.addItem('SOME-PART-BARCODE')
+    await flushPromises()
+
+    expect(entry!.systemLocation).toBe(99)
+    expect(entry!.confirmedLocation).toBe(55)
+  })
+
+  it('setActiveLocation(null) clears the active location', () => {
+    const log = useStockTakingLog(mockService.service)
+    log.setActiveLocation({ pk: 1, name: 'x' })
+    expect(log.activeLocation.value).not.toBeNull()
+    log.setActiveLocation(null)
+    expect(log.activeLocation.value).toBeNull()
+  })
+})

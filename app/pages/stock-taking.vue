@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ComponentPublicInstance } from 'vue'
 import type { StockLocation } from '~/types/inventree'
+import { isLocationCode } from '~/utils/locationCode'
 
 const toast = useToast()
 const config = useRuntimeConfig()
@@ -22,6 +23,7 @@ const {
   logEntries,
   isSubmitting,
   searchMode,
+  activeLocation,
   addItem,
   updateCount,
   updateLocation,
@@ -30,6 +32,7 @@ const {
   clearLog,
   applyStockTake,
   setSearchMode,
+  setActiveLocation,
   loadFromStorage,
   isEmpty,
   hasErrors,
@@ -67,7 +70,16 @@ const barcodeInputRef = ref<HTMLInputElement | null>(null)
  */
 const handleScan = () => {
   if (!barcodeInput.value.trim()) return
-  addItem(barcodeInput.value)
+  const scanned = barcodeInput.value.trim()
+  const wasLocation = isLocationCode(scanned)
+  addItem(scanned)
+  if (wasLocation) {
+    toast.add({
+      title: 'Location set',
+      description: `New scans will go to ${scanned}`,
+      color: 'info'
+    })
+  }
   barcodeInput.value = ''
   focusInput()
 }
@@ -270,7 +282,7 @@ onMounted(() => {
         <UInput
           ref="barcodeInputRef"
           v-model="barcodeInput"
-          :placeholder="searchMode === 'barcode' ? 'Scan barcode...' : 'Search parts...'"
+          :placeholder="searchMode === 'barcode' ? 'Scan barcode or location...' : 'Search parts...'"
           :icon="searchMode === 'barcode' ? 'i-lucide-scan-barcode' : 'i-lucide-search'"
           size="lg"
           autofocus
@@ -283,6 +295,36 @@ onMounted(() => {
             />
           </template>
         </UInput>
+
+        <!-- Active location banner: set by scanning a location QR code -->
+        <div
+          v-if="activeLocation"
+          class="flex items-center justify-between gap-2 p-3 rounded-lg bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800"
+        >
+          <div class="flex items-center gap-2 min-w-0">
+            <UIcon
+              name="i-lucide-map-pin"
+              class="w-4 h-4 text-primary-600 dark:text-primary-400 shrink-0"
+            />
+            <span class="text-sm">
+              Scanning into
+              <span class="font-mono font-semibold">{{ activeLocation.name }}</span>
+              <span
+                v-if="activeLocation.pk < 0"
+                class="text-warning"
+              > (not found in InvenTree)</span>
+            </span>
+          </div>
+          <UButton
+            size="xs"
+            variant="ghost"
+            color="neutral"
+            icon="i-lucide-x"
+            @click="setActiveLocation(null)"
+          >
+            Clear
+          </UButton>
+        </div>
       </div>
 
       <USeparator class="mb-4" />

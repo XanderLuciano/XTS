@@ -234,6 +234,39 @@ const config = useRuntimeConfig()
       <UCard>
         <template #header>
           <div class="flex items-center gap-2">
+            <div class="p-1.5 bg-rose-100 dark:bg-rose-900 rounded-lg">
+              <UIcon
+                name="i-lucide-map-pin"
+                class="w-5 h-5 text-rose-600 dark:text-rose-400"
+              />
+            </div>
+            <h3 class="text-base font-semibold">
+              Locations
+            </h3>
+          </div>
+        </template>
+
+        <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">
+          Create bin locations and print scannable labels.
+        </p>
+
+        <template #footer>
+          <NuxtLink to="/locations">
+            <UButton
+              block
+              size="sm"
+              icon="i-lucide-arrow-right"
+              trailing
+            >
+              Locations
+            </UButton>
+          </NuxtLink>
+        </template>
+      </UCard>
+
+      <UCard>
+        <template #header>
+          <div class="flex items-center gap-2">
             <div class="p-1.5 bg-yellow-100 dark:bg-yellow-900 rounded-lg">
               <UIcon
                 name="i-lucide-layers"

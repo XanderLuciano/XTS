@@ -5,7 +5,7 @@
  * and provides a unified print interface that routes to the correct output.
  */
 import { ref, readonly } from 'vue'
-import { composeLabelElements, elementsToZpl } from '~/utils/label'
+import { composeLabelElements, composeLocationLabelElements, elementsToZpl } from '~/utils/label'
 import { extractApiError } from '~/utils/apiError'
 import type { LabelData } from '~/utils/label'
 
@@ -126,6 +126,68 @@ export function usePrinterSettings() {
     return { ...result, method: 'server' }
   }
 
+  /**
+   * Print a bin location label via the server API.
+   */
+  async function printLocationViaServer(code: string, description: string): Promise<{ success: boolean, error?: string }> {
+    const printerUrl = localStorage.getItem('zebra_printer_url') || ''
+    const printerApiKey = localStorage.getItem('zebra_api_key') || ''
+
+    try {
+      await $fetch('/api/print-location-label', {
+        method: 'POST',
+        body: {
+          code,
+          description,
+          printerUrl: printerUrl || undefined,
+          apiKey: printerApiKey || undefined
+        }
+      })
+      return { success: true }
+    } catch (error: unknown) {
+      return { success: false, error: extractApiError(error, 'Server print failed') }
+    }
+  }
+
+  /**
+   * Print a bin location label directly to a local USB printer via WebUSB.
+   */
+  async function printLocationViaLocal(code: string, description: string): Promise<{ success: boolean, error?: string }> {
+    const { isConnected, printZpl, lastError } = useLocalPrinter()
+    const { widthDots, heightDots, load: loadConfig } = useLocalPrinterConfig()
+
+    loadConfig()
+
+    if (!isConnected.value) {
+      return { success: false, error: 'Local printer is not connected' }
+    }
+
+    const elements = composeLocationLabelElements(code, description, widthDots.value, heightDots.value)
+    const zpl = elementsToZpl(elements)
+    const ok = await printZpl(zpl)
+
+    if (!ok) {
+      return { success: false, error: lastError.value || 'Failed to print locally' }
+    }
+
+    return { success: true }
+  }
+
+  /**
+   * Print a bin location label using the user's preferred method.
+   */
+  async function printLocation(code: string, description: string): Promise<{ success: boolean, method: PrintMethod, error?: string }> {
+    const method = settings.value.defaultMethod
+
+    if (method === 'local') {
+      const result = await printLocationViaLocal(code, description)
+      return { ...result, method: 'local' }
+    }
+
+    const result = await printLocationViaServer(code, description)
+    return { ...result, method: 'server' }
+  }
+
   return {
     settings: readonly(settings),
     load,
@@ -133,6 +195,9 @@ export function usePrinterSettings() {
     setDefaultMethod,
     printViaServer,
     printViaLocal,
-    print
+    print,
+    printLocationViaServer,
+    printLocationViaLocal,
+    printLocation
   }
 }

@@ -2,6 +2,7 @@ import { ref, computed, type Ref, type ComputedRef } from 'vue'
 import type { StockTakeEntry, StockTakeResult, Part, PersistedStockTakeLog } from '~/types/inventree'
 import type { InventreeService } from '~/services/inventree.service'
 import { extractApiError } from '~/utils/apiError'
+import { isLocationCode } from '~/utils/locationCode'
 
 /**
  * Interface for the stock taking log composable
@@ -11,6 +12,7 @@ export interface UseStockTakingLog {
   logEntries: Ref<StockTakeEntry[]>
   isSubmitting: Ref<boolean>
   searchMode: Ref<'barcode' | 'part'>
+  activeLocation: Ref<{ pk: number, name: string } | null>
 
   // Actions
   addItem: (barcode: string) => StockTakeEntry | null
@@ -21,6 +23,7 @@ export interface UseStockTakingLog {
   clearLog: () => void
   applyStockTake: () => Promise<StockTakeResult>
   setSearchMode: (mode: 'barcode' | 'part') => void
+  setActiveLocation: (location: { pk: number, name: string } | null) => void
   highlightEntry: (entryId: string) => void
   loadFromStorage: () => void
 
@@ -64,6 +67,10 @@ export const useStockTakingLog = (inventreeService?: InventreeService): UseStock
   // Search mode: 'barcode' uses InvenTree barcode API, 'part' uses part search
   const searchMode = ref<'barcode' | 'part'>('barcode')
 
+  // Active location set by scanning a location QR code. When set, newly added
+  // items default their confirmed location to this location.
+  const activeLocation = ref<{ pk: number, name: string } | null>(null)
+
   // Highlighted entry ID for duplicate scan scroll-to
   const highlightedEntryId = ref<string | null>(null)
 
@@ -81,6 +88,14 @@ export const useStockTakingLog = (inventreeService?: InventreeService): UseStock
    */
   const setSearchMode = (mode: 'barcode' | 'part'): void => {
     searchMode.value = mode
+  }
+
+  /**
+   * Set (or clear) the active location used as the default for newly scanned
+   * items. Set this by scanning a location QR code.
+   */
+  const setActiveLocation = (location: { pk: number, name: string } | null): void => {
+    activeLocation.value = location
   }
 
   const STORAGE_KEY = 'stock-taking-log'
@@ -118,6 +133,13 @@ export const useStockTakingLog = (inventreeService?: InventreeService): UseStock
     const trimmed = barcode.trim()
     if (!trimmed) return null
 
+    // If the scanned value is a bin location code, set it as the active
+    // location instead of adding a stock item entry.
+    if (isLocationCode(trimmed)) {
+      resolveActiveLocation(trimmed)
+      return null
+    }
+
     // Check for duplicates
     const existingId = barcodeIndex.get(trimmed)
     if (existingId) {
@@ -147,6 +169,28 @@ export const useStockTakingLog = (inventreeService?: InventreeService): UseStock
     resolveEntry(entry)
 
     return entry
+  }
+
+  /**
+   * Resolve a scanned location code into the active location by looking it up
+   * in InvenTree by name. Falls back to clearing the active location if not found.
+   */
+  const resolveActiveLocation = async (code: string): Promise<void> => {
+    if (!inventreeService) {
+      // No service (e.g. tests) — still record by name with a sentinel pk
+      activeLocation.value = { pk: -1, name: code }
+      return
+    }
+    try {
+      const location = await inventreeService.findLocationByName(code)
+      if (location) {
+        activeLocation.value = { pk: location.pk, name: location.name }
+      } else {
+        activeLocation.value = { pk: -1, name: code }
+      }
+    } catch {
+      activeLocation.value = { pk: -1, name: code }
+    }
   }
 
   /**
@@ -200,7 +244,11 @@ export const useStockTakingLog = (inventreeService?: InventreeService): UseStock
       stillExists.systemCount = firstStockItem.quantity
       stillExists.confirmedCount = firstStockItem.quantity
       stillExists.systemLocation = firstStockItem.location
-      stillExists.confirmedLocation = firstStockItem.location
+      // Default to the active (scanned) location if one is set and valid,
+      // otherwise keep the item's current system location.
+      stillExists.confirmedLocation = (activeLocation.value && activeLocation.value.pk > 0)
+        ? activeLocation.value.pk
+        : firstStockItem.location
       stillExists.status = 'loaded'
       logEntries.value = [...logEntries.value]
       saveToStorage()
@@ -433,6 +481,7 @@ export const useStockTakingLog = (inventreeService?: InventreeService): UseStock
     logEntries,
     isSubmitting,
     searchMode,
+    activeLocation,
 
     // Actions
     addItem,
@@ -443,6 +492,7 @@ export const useStockTakingLog = (inventreeService?: InventreeService): UseStock
     clearLog,
     applyStockTake,
     setSearchMode,
+    setActiveLocation,
     highlightEntry,
     loadFromStorage,
 

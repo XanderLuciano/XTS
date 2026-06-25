@@ -161,7 +161,33 @@ Simplified interface for creating parts in InvenTree with essential fields:
 - First product image → Image URL
 - Constructed URL → Link
 
-### 4. Mock API for Development
+### 4. Bin Locations (`/locations`)
+
+Create and label warehouse bin locations.
+
+**Location code format:** `ROOM.SHELF.ROW.BIN`, each component zero-padded to 3
+digits (0–999), e.g. Room 1 / Shelf 2 / Row 3 / Bin 4 → `001.002.003.004`.
+
+**Workflow:**
+1. Enter Room/Shelf/Row/Bin numbers (live-previewed as an encoded code)
+2. Create the location — stored as an InvenTree stock location (`/stock/location/`)
+   with the encoded code as its name and a human-readable description
+3. The encoded code is linked as a scannable barcode on the location
+   (`/barcode/link/` with the `stocklocation` field)
+4. Optionally auto-print a Zebra label (QR of the code + code + description)
+5. Existing locations can be searched and re-printed if a label is damaged
+
+**Printing:** routes through `usePrinterSettings().printLocation()` which respects
+the configured default printer (server API vs local USB). Server endpoint:
+`/api/print-location-label`. Layout helper: `composeLocationLabelElements()` in
+`app/utils/label.ts`. Code utilities live in `app/utils/locationCode.ts`.
+
+**Stock-taking integration:** scanning a location QR (a value matching the code
+format) on `/stock-taking` sets an "active location". Subsequently scanned items
+default their confirmed location to that location, so applying the stock take
+transfers them there. A banner shows the active location with a clear button.
+
+### 5. Mock API for Development
 
 Mock endpoints available:
 - `GET /api/mock/parts` - List all parts

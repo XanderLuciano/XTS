@@ -37,6 +37,16 @@ export interface PartCategory {
 export interface StockLocation {
   pk: number
   name: string
+  description?: string
+  parent?: number | null
+  pathstring?: string
+  barcode_hash?: string | null
+}
+
+export interface CreateStockLocationDto {
+  name: string
+  description?: string
+  parent?: number | null
 }
 
 export interface CreatePartDto {

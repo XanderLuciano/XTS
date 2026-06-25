@@ -83,6 +83,11 @@ const toolsNav = [
     to: '/add-stock'
   },
   {
+    label: 'Locations',
+    icon: 'i-lucide-map-pin',
+    to: '/locations'
+  },
+  {
     label: 'Scanner',
     icon: 'i-lucide-scan-barcode',
     to: '/scan'
