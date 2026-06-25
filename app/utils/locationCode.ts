@@ -66,11 +66,14 @@ export function parseLocationCode(value: string | null | undefined): LocationCod
 
 /**
  * Format a location code for human-friendly display, e.g.
- * "001.002.003.004" -> "Room 1 · Shelf 2 · Row 3 · Bin 4".
+ * "001.002.003.004" -> "Room 1 · Rack 2 · Shelf 3 · Bin 4".
  * Falls back to the raw code if it cannot be parsed.
+ *
+ * NOTE: The component object keys (room/shelf/row/bin) are retained for
+ * backwards compatibility; the display wording is Room → Rack → Shelf → Bin.
  */
 export function describeLocationCode(value: string): string {
   const parts = parseLocationCode(value)
   if (!parts) return value
-  return `Room ${parts.room} · Shelf ${parts.shelf} · Row ${parts.row} · Bin ${parts.bin}`
+  return `Room ${parts.room} · Rack ${parts.shelf} · Shelf ${parts.row} · Bin ${parts.bin}`
 }

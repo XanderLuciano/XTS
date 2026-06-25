@@ -195,7 +195,7 @@ const reprintLocation = async (location: StockLocation) => {
             />
           </UFormField>
           <UFormField
-            label="Shelf"
+            label="Rack"
             description="0–999"
           >
             <UInput
@@ -207,7 +207,7 @@ const reprintLocation = async (location: StockLocation) => {
             />
           </UFormField>
           <UFormField
-            label="Row"
+            label="Shelf"
             description="0–999"
           >
             <UInput

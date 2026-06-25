@@ -99,7 +99,7 @@ describe('parseLocationCode', () => {
 
 describe('describeLocationCode', () => {
   it('produces a human-readable description', () => {
-    expect(describeLocationCode('001.002.003.004')).toBe('Room 1 · Shelf 2 · Row 3 · Bin 4')
+    expect(describeLocationCode('001.002.003.004')).toBe('Room 1 · Rack 2 · Shelf 3 · Bin 4')
   })
 
   it('falls back to the raw code when not parseable', () => {

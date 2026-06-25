@@ -166,7 +166,9 @@ Simplified interface for creating parts in InvenTree with essential fields:
 Create and label warehouse bin locations.
 
 **Location code format:** `ROOM.SHELF.ROW.BIN`, each component zero-padded to 3
-digits (0–999), e.g. Room 1 / Shelf 2 / Row 3 / Bin 4 → `001.002.003.004`.
+digits (0–999), e.g. Room 1 / Rack 2 / Shelf 3 / Bin 4 → `001.002.003.004`.
+(Display wording is Room → Rack → Shelf → Bin; the underlying component keys
+remain room/shelf/row/bin for backwards compatibility.)
 
 **Workflow:**
 1. Enter Room/Shelf/Row/Bin numbers (live-previewed as an encoded code)
