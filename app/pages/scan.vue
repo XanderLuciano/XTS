@@ -299,9 +299,20 @@ const lookupProduct = async (barcode: string, index: number) => {
       toast.add({ title: 'Product found', color: 'success' })
     }
   } catch (error) {
+    // $fetch wraps server errors in a FetchError whose `.data` holds the
+    // Nitro error body ({ message, data }). Pull out the detailed stage info
+    // the scraper now returns so production failures are diagnosable.
+    const fetchError = error as { data?: { message?: string, data?: Record<string, unknown> }, message?: string }
+    const serverDetail = fetchError?.data?.data
+    const description = fetchError?.data?.message
+      || (error instanceof Error ? error.message : 'Could not fetch product data')
+
+    // Log the full structured detail to the browser console for debugging.
+    console.error('Scrape lookup failed:', { description, detail: serverDetail })
+
     toast.add({
       title: 'Lookup failed',
-      description: error instanceof Error ? error.message : 'Could not fetch product data',
+      description,
       color: 'error'
     })
   } finally {

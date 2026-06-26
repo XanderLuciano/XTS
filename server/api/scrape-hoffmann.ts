@@ -12,15 +12,24 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  // Track which stage of the scrape we're in so that, if something throws,
+  // the error response can tell us exactly where it failed in production.
+  let stage = 'init'
+  let productUrl = ''
+
   let browser
   try {
     console.log('Searching for barcode:', barcode)
 
     // Step 1: Use Hoffmann's autocomplete API to find the product
+    stage = 'search-api'
     const searchUrl = `https://www.hoffmann-group.com/US/en/hus/v2/search/full_autocomplete?searchTerm=${encodeURIComponent(barcode)}`
     console.log('Calling search API:', searchUrl)
 
     const searchResponse = await fetch(searchUrl)
+    if (!searchResponse.ok) {
+      throw new Error(`Search API returned HTTP ${searchResponse.status}`)
+    }
     const searchData = await searchResponse.json()
 
     if (!searchData.products || searchData.products.length === 0) {
@@ -28,19 +37,23 @@ export default defineEventHandler(async (event) => {
     }
 
     const product = searchData.products[0]
-    const productUrl = `https://www.hoffmann-group.com/US/en/hus${product.url}`
+    productUrl = `https://www.hoffmann-group.com/US/en/hus${product.url}`
     console.log('Found product:', product.code, 'at', productUrl)
 
     // Step 2: Navigate to product page to get full details
+    stage = 'browser-launch'
     browser = await puppeteer.launch({
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox']
     })
     const page = await browser.newPage()
 
+    stage = 'page-navigation'
     console.log('Navigating to product page:', productUrl)
     await page.goto(productUrl, { waitUntil: 'networkidle2', timeout: 30000 })
     console.log('Page loaded successfully')
+
+    stage = 'data-extraction'
 
     const data = await page.evaluate(() => {
       let articleNumber = ''
@@ -119,10 +132,23 @@ export default defineEventHandler(async (event) => {
       }
     }
   } catch (error) {
-    console.error('Scraping error:', error)
+    const detail = {
+      stage,
+      barcode,
+      productUrl: productUrl || undefined,
+      errorName: error instanceof Error ? error.name : typeof error,
+      errorMessage: error instanceof Error ? error.message : String(error),
+      // Stack is invaluable for diagnosing Puppeteer/Chromium launch failures
+      // in production where stdout may not be captured.
+      stack: error instanceof Error ? error.stack : undefined
+    }
+    console.error('Hoffmann scraping error:', detail)
     throw createError({
       statusCode: 500,
-      message: error instanceof Error ? error.message : 'Failed to scrape product data'
+      message: `Hoffmann scrape failed at stage "${stage}": ${detail.errorMessage}`,
+      // Nitro strips `message` from 5xx errors in production but preserves
+      // `data`, so the client/production logs can still see what failed.
+      data: detail
     })
   } finally {
     if (browser) {
