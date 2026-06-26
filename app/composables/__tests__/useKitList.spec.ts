@@ -30,6 +30,7 @@ interface MockService {
   getLocations: ReturnType<typeof vi.fn>
   scanBarcodeWithStock: ReturnType<typeof vi.fn>
   findPartByIPNAndRevision: ReturnType<typeof vi.fn>
+  getPartByIPN: ReturnType<typeof vi.fn>
   removeStock: ReturnType<typeof vi.fn>
 }
 
@@ -65,6 +66,10 @@ function makeService(over: Partial<MockService> = {}): MockService {
     getLocations: vi.fn(async (): Promise<StockLocation[]> => [{ pk: 1, name: '001.001.001.001' }]),
     scanBarcodeWithStock: vi.fn(async () => ({ part: makePart(), stockItem: makeStockItem() })),
     findPartByIPNAndRevision: vi.fn(async () => makePart({ pk: 11, revision: 'B' })),
+    getPartByIPN: vi.fn(async () => [
+      makePart({ pk: 10, revision: 'A', in_stock: 5 }),
+      makePart({ pk: 11, revision: 'B', in_stock: 12 })
+    ]),
     removeStock: vi.fn(async () => undefined),
     ...over
   }
@@ -210,6 +215,20 @@ describe('useKitList - quantity, skip and revision override', () => {
     expect(kit.items.value[0]!.targetRevision).toBe('B')
     expect(kit.items.value[0]!.partPk).toBe(11)
     expect(kit.items.value[0]!.scans[0]?.matchKind).toBe('rev-mismatch')
+  })
+
+  it('lists available revisions for an item with on-hand stock, most stock first', async () => {
+    const svc = makeService()
+    const kit = useKitList(svc as never)
+    await kit.loadKit(assemblyArg)
+    await flush()
+    const id = kit.items.value[0]!.id
+    const options = await kit.getRevisionOptions(id)
+    expect(svc.getPartByIPN).toHaveBeenCalledWith('PN-001')
+    expect(options).toHaveLength(2)
+    // Rev B has more stock (12) so it should sort first
+    expect(options[0]).toEqual({ partPk: 11, revision: 'B', inStock: 12 })
+    expect(options[1]).toEqual({ partPk: 10, revision: 'A', inStock: 5 })
   })
 })
 

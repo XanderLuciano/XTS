@@ -6,7 +6,8 @@ import type {
   UnmatchedScan,
   KitItemLocation,
   KitCompletionResult,
-  PersistedKitDraft
+  PersistedKitDraft,
+  RevisionOption
 } from '~/types/kit'
 import type { InventreeService } from '~/services/inventree.service'
 import { extractApiError } from '~/utils/apiError'
@@ -46,6 +47,7 @@ export interface UseKitList {
   updateNote: (itemId: string, note: string) => void
   updateKitQty: (itemId: string, qty: number) => void
   overrideRevision: (itemId: string, revision: string) => Promise<boolean>
+  getRevisionOptions: (itemId: string) => Promise<RevisionOption[]>
   skipItem: (itemId: string, reason: string) => void
   unskipItem: (itemId: string) => void
   removeScan: (itemId: string, scanIndex: number) => void
@@ -415,6 +417,29 @@ export const useKitList = (inventreeService?: InventreeService): UseKitList => {
     saveToStorage()
   }
 
+  /**
+   * Fetch all revisions available for a kit item's IPN, with on-hand stock for
+   * each. Lets the user see what's physically available before picking an
+   * alternative revision. Sorted by stock (most available first), then rev.
+   */
+  const getRevisionOptions = async (itemId: string): Promise<RevisionOption[]> => {
+    const item = items.value.find(i => i.id === itemId)
+    if (!item || !inventreeService || !item.ipn) return []
+    try {
+      const parts = await inventreeService.getPartByIPN(item.ipn)
+      return parts
+        .map(p => ({
+          partPk: p.pk,
+          revision: p.revision || '',
+          inStock: p.in_stock ?? 0
+        }))
+        .sort((a, b) => b.inStock - a.inStock || a.revision.localeCompare(b.revision))
+    } catch (e) {
+      console.warn('Failed to load revision options:', e)
+      return []
+    }
+  }
+
   const overrideRevision = async (itemId: string, revision: string): Promise<boolean> => {
     const item = items.value.find(i => i.id === itemId)
     if (!item || !inventreeService) return false
@@ -653,6 +678,7 @@ export const useKitList = (inventreeService?: InventreeService): UseKitList => {
     updateNote,
     updateKitQty,
     overrideRevision,
+    getRevisionOptions,
     skipItem,
     unskipItem,
     removeScan,

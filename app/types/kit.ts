@@ -42,6 +42,19 @@ export interface UnmatchedScan {
 }
 
 /**
+ * An available revision of a part (sharing the same IPN) that can be chosen as
+ * an alternative when overriding a kit item's revision.
+ */
+export interface RevisionOption {
+  /** Part pk for this specific revision. */
+  partPk: number
+  /** Revision string (may be empty for an unrevisioned part). */
+  revision: string
+  /** Aggregate quantity on hand for this revision. */
+  inStock: number
+}
+
+/**
  * A stock location holding some quantity of a kit item's part.
  */
 export interface KitItemLocation {

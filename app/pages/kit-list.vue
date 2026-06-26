@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Part } from '~/types/inventree'
-import type { KitItem } from '~/types/kit'
+import type { KitItem, RevisionOption } from '~/types/kit'
 import { resolveImageUrl as _resolveImageUrl } from '~/utils/resolveImageUrl'
 import { buildKitSummaryMarkdown } from '~/utils/kitSummary'
 
@@ -29,6 +29,7 @@ const {
   updateNote,
   updateKitQty,
   overrideRevision,
+  getRevisionOptions,
   skipItem,
   unskipItem,
   removeScan,
@@ -104,11 +105,24 @@ const isRevModalOpen = ref(false)
 const revTargetItem = ref<KitItem | null>(null)
 const revInput = ref('')
 const isApplyingRev = ref(false)
+const revOptions = ref<RevisionOption[]>([])
+const isLoadingRevOptions = ref(false)
 
-const openRevModal = (item: KitItem) => {
+const openRevModal = async (item: KitItem) => {
   revTargetItem.value = item
   revInput.value = item.targetRevision
+  revOptions.value = []
   isRevModalOpen.value = true
+  isLoadingRevOptions.value = true
+  try {
+    revOptions.value = await getRevisionOptions(item.id)
+  } finally {
+    isLoadingRevOptions.value = false
+  }
+}
+
+const selectRevOption = (option: RevisionOption) => {
+  revInput.value = option.revision
 }
 
 const applyRevOverride = async () => {
@@ -740,14 +754,59 @@ onMounted(() => {
     <!-- ============ Revision override modal ============ -->
     <UModal v-model:open="isRevModalOpen">
       <template #content>
-        <div class="p-6 max-w-sm">
+        <div class="p-6 max-w-md">
           <h3 class="text-lg font-bold mb-1">
             Override revision
           </h3>
           <p class="text-sm text-gray-500 mb-4">
             {{ revTargetItem?.name }} ({{ revTargetItem?.ipn }})
           </p>
-          <label class="block text-xs font-medium text-gray-500 mb-1">Revision</label>
+
+          <!-- Available revisions on hand -->
+          <label class="block text-xs font-medium text-gray-500 mb-1">Available revisions</label>
+          <div
+            v-if="isLoadingRevOptions"
+            class="text-sm text-gray-400 py-2"
+          >
+            <UIcon
+              name="i-lucide-loader-2"
+              class="w-4 h-4 animate-spin inline-block mr-1"
+            />
+            Loading revisions...
+          </div>
+          <div
+            v-else-if="revOptions.length === 0"
+            class="text-sm text-gray-400 py-2"
+          >
+            No other revisions found for this IPN. Enter one manually below.
+          </div>
+          <div
+            v-else
+            class="space-y-1 mb-4 max-h-48 overflow-y-auto"
+          >
+            <button
+              v-for="option in revOptions"
+              :key="option.partPk"
+              class="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-md border text-sm transition-colors"
+              :class="revInput === option.revision
+                ? 'border-primary-400 bg-primary-50 dark:bg-primary-900/20'
+                : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'"
+              @click="selectRevOption(option)"
+            >
+              <span class="font-medium">
+                Rev {{ option.revision || '—' }}
+              </span>
+              <UBadge
+                :color="option.inStock > 0 ? 'success' : 'neutral'"
+                variant="subtle"
+                size="sm"
+              >
+                {{ option.inStock }} in stock
+              </UBadge>
+            </button>
+          </div>
+
+          <label class="block text-xs font-medium text-gray-500 mb-1">Revision (manual override)</label>
           <UInput
             v-model="revInput"
             placeholder="e.g. A or 02"
