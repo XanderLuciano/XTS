@@ -44,6 +44,10 @@ export default defineEventHandler(async (event) => {
     stage = 'browser-launch'
     browser = await puppeteer.launch({
       headless: true,
+      // In production (e.g. Alpine Docker) Puppeteer's bundled Chrome isn't
+      // available, so point it at the system Chromium via this env var.
+      // Locally the var is unset and Puppeteer uses its downloaded browser.
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
       args: ['--no-sandbox', '--disable-setuid-sandbox']
     })
     const page = await browser.newPage()
