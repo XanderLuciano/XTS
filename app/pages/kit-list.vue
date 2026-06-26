@@ -3,6 +3,7 @@ import type { Part } from '~/types/inventree'
 import type { KitItem, RevisionOption } from '~/types/kit'
 import { resolveImageUrl as _resolveImageUrl } from '~/utils/resolveImageUrl'
 import { buildKitSummaryMarkdown } from '~/utils/kitSummary'
+import { describeLocationCode } from '~/utils/locationCode'
 
 const toast = useToast()
 const config = useRuntimeConfig()
@@ -553,7 +554,7 @@ onMounted(() => {
                   </td>
 
                   <!-- Locations -->
-                  <td class="px-3 py-3 max-w-48">
+                  <td class="px-3 py-3 max-w-56">
                     <div
                       v-if="item.resolving"
                       class="text-xs text-gray-400"
@@ -573,13 +574,15 @@ onMounted(() => {
                       <div
                         v-for="loc in item.locations"
                         :key="loc.stockItemPk"
-                        class="text-xs flex items-center gap-1"
+                        class="text-xs flex items-center gap-1 flex-wrap"
                       >
                         <UIcon
                           name="i-lucide-map-pin"
                           class="w-3 h-3 text-gray-400 shrink-0"
                         />
-                        <span class="font-mono truncate">{{ loc.locationName }}</span>
+                        <UTooltip :text="describeLocationCode(loc.locationName)">
+                          <span class="font-mono whitespace-nowrap">{{ loc.locationName }}</span>
+                        </UTooltip>
                         <span class="text-gray-400">×{{ loc.quantity }}</span>
                         <span
                           v-if="loc.batch"
