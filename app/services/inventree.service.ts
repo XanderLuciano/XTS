@@ -63,6 +63,51 @@ export class InventreeService {
     return await this.api(`/part/${pk}/`)
   }
 
+  /**
+   * Scan a barcode and resolve both the linked part and (when the barcode is
+   * linked to a stock item) the stock item itself. This lets callers read the
+   * batch/vendor and exact stock line a barcode points at — information the
+   * plain {@link scanBarcode} helper discards.
+   *
+   * Returns nulls for whichever pieces could not be resolved. A 400 from the
+   * barcode endpoint (barcode not found) resolves to `{ part: null, stockItem: null }`.
+   */
+  async scanBarcodeWithStock(barcode: string): Promise<{ part: Part | null, stockItem: StockItem | null }> {
+    try {
+      const response = await this.api('/barcode/', {
+        method: 'POST',
+        body: { barcode }
+      })
+
+      // Barcode linked directly to a stock item — richest case.
+      if (response?.stockitem) {
+        const stockItemPk = typeof response.stockitem === 'number'
+          ? response.stockitem
+          : response.stockitem.pk
+        const stockItem = await this.api(`/stock/${stockItemPk}/`) as StockItem
+        const partPk = typeof stockItem.part === 'number'
+          ? stockItem.part
+          : (stockItem.part as { pk: number }).pk
+        const part = await this.getPartById(partPk)
+        return { part, stockItem }
+      }
+
+      // Barcode linked to a part (no specific stock item).
+      if (response?.part) {
+        const partPk = typeof response.part === 'number' ? response.part : response.part.pk
+        const part = await this.getPartById(partPk)
+        return { part, stockItem: null }
+      }
+
+      return { part: null, stockItem: null }
+    } catch (error: unknown) {
+      if (extractApiErrorStatus(error) === 400) {
+        return { part: null, stockItem: null }
+      }
+      throw error
+    }
+  }
+
   async searchParts(query: string): Promise<Part[]> {
     const response = await this.api(`/part/?search=${encodeURIComponent(query)}`)
     return Array.isArray(response) ? response : response?.results || []

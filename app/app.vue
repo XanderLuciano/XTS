@@ -58,6 +58,11 @@ const primaryNav = [
     label: 'Stock Taking',
     icon: 'i-lucide-clipboard-check',
     to: '/stock-taking'
+  },
+  {
+    label: 'Kit List',
+    icon: 'i-lucide-package-check',
+    to: '/kit-list'
   }
 ]
 
