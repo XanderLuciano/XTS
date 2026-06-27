@@ -7,6 +7,8 @@ const VENDOR_OPTIONS = ['YihShan', 'UMT', 'NRG', 'Prime', 'CIM', 'CIMTAS', 'KMS'
 
 const inventree = useInventreeApi()
 const toast = useToast()
+const { print: printLabel, load: loadPrinterSettings } = usePrinterSettings()
+const { listenForUsbEvents, reconnect: reconnectLocalPrinter } = useLocalPrinter()
 
 const searchQuery = ref('')
 const debouncedSearch = ref('')
@@ -205,21 +207,17 @@ const printLabelForStockItem = async (part: Part, stockItem: StockItem) => {
       stockItem.barcode_hash = 'linked'
     }
 
-    const printerUrl = localStorage.getItem('zebra_printer_url') || ''
-    const printerApiKey = localStorage.getItem('zebra_api_key') || ''
-
-    await $fetch('/api/print-label', {
-      method: 'POST',
-      body: {
-        barcode,
-        partName: part.name,
-        partNumber: part.IPN || 'N/A',
-        quantity: stockItem.quantity > 1 ? stockItem.quantity : undefined,
-        vendor: stockItem.batch || undefined,
-        printerUrl: printerUrl || undefined,
-        apiKey: printerApiKey || undefined
-      }
+    const result = await printLabel({
+      barcode,
+      partName: part.name,
+      partNumber: part.IPN || 'N/A',
+      quantity: stockItem.quantity > 1 ? stockItem.quantity : undefined,
+      vendor: stockItem.batch || undefined
     })
+
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to print label')
+    }
 
     const vendorLabel = stockItem.batch ? ` (${stockItem.batch})` : ''
     toast.add({
@@ -264,21 +262,17 @@ const confirmReplaceBarcode = async () => {
     stockItem.barcode_hash = 'linked'
 
     // Print label
-    const printerUrl = localStorage.getItem('zebra_printer_url') || ''
-    const printerApiKey = localStorage.getItem('zebra_api_key') || ''
-
-    await $fetch('/api/print-label', {
-      method: 'POST',
-      body: {
-        barcode,
-        partName: part.name,
-        partNumber: part.IPN || 'N/A',
-        quantity: stockItem.quantity > 1 ? stockItem.quantity : undefined,
-        vendor: stockItem.batch || undefined,
-        printerUrl: printerUrl || undefined,
-        apiKey: printerApiKey || undefined
-      }
+    const result = await printLabel({
+      barcode,
+      partName: part.name,
+      partNumber: part.IPN || 'N/A',
+      quantity: stockItem.quantity > 1 ? stockItem.quantity : undefined,
+      vendor: stockItem.batch || undefined
     })
+
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to print label')
+    }
 
     const vendorLabel = stockItem.batch ? ` (${stockItem.batch})` : ''
     toast.add({
@@ -342,6 +336,10 @@ const getCategoryName = (categoryId: number | null): string => {
 }
 
 onMounted(() => {
+  loadPrinterSettings()
+  listenForUsbEvents()
+  reconnectLocalPrinter()
+
   try {
     const saved = localStorage.getItem('stock_view_page_size')
     if (saved) {
