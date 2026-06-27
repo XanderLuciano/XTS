@@ -90,6 +90,9 @@ export interface StockTakeEntry {
   confirmedCount: number
   systemLocation: number | null
   confirmedLocation: number | null
+  /** Batch / vendor of the resolved stock item, when the barcode targets a
+   *  specific stock line. Null when resolved via part lookup. */
+  batch: string | null
   status: 'loading' | 'loaded' | 'error'
   errorMessage?: string
   addedAt: number

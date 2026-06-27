@@ -1,5 +1,5 @@
 import { ref, computed, type Ref, type ComputedRef } from 'vue'
-import type { StockTakeEntry, StockTakeResult, Part, PersistedStockTakeLog } from '~/types/inventree'
+import type { StockTakeEntry, StockTakeResult, Part, StockItem, PersistedStockTakeLog } from '~/types/inventree'
 import type { InventreeService } from '~/services/inventree.service'
 import { extractApiError } from '~/utils/apiError'
 import { isLocationCode } from '~/utils/locationCode'
@@ -157,6 +157,7 @@ export const useStockTakingLog = (inventreeService?: InventreeService): UseStock
       confirmedCount: 0,
       systemLocation: null,
       confirmedLocation: null,
+      batch: null,
       status: 'loading',
       addedAt: Date.now()
     }
@@ -195,15 +196,24 @@ export const useStockTakingLog = (inventreeService?: InventreeService): UseStock
 
   /**
    * Background resolution of part and stock item data for a loading entry.
+   *
+   * In barcode mode the scan resolves to the *specific* stock item the barcode
+   * is linked to (preserving vendor/batch), so adjustments target that exact
+   * stock line. In part-search mode there is no specific stock item, so we fall
+   * back to the part's first stock item.
    */
   const resolveEntry = async (entry: StockTakeEntry): Promise<void> => {
     if (!inventreeService) return
 
     try {
       let part: Part | null = null
+      let stockItem: StockItem | null = null
 
       if (searchMode.value === 'barcode') {
-        part = await inventreeService.scanBarcode(entry.barcode)
+        // Resolve the exact stock item the barcode points at (vendor/batch aware).
+        const resolved = await inventreeService.scanBarcodeWithStock(entry.barcode)
+        part = resolved.part
+        stockItem = resolved.stockItem
       } else {
         const parts = await inventreeService.searchParts(entry.barcode)
         part = parts.length > 0 ? parts[0]! : null
@@ -223,13 +233,19 @@ export const useStockTakingLog = (inventreeService?: InventreeService): UseStock
         return
       }
 
-      const stockItems = await inventreeService.getStockItems(part.pk)
+      // When the barcode resolved to a specific stock item, use it directly so
+      // the adjustment targets that vendor/batch. Otherwise (part search, or a
+      // barcode linked only to a part) fall back to the part's first stock item.
+      if (!stockItem) {
+        const stockItems = await inventreeService.getStockItems(part.pk)
+        stockItem = stockItems.length > 0 ? stockItems[0]! : null
+      }
 
       // Re-check entry still exists
       const stillExists = logEntries.value.find(e => e.id === entry.id)
       if (!stillExists) return
 
-      if (stockItems.length === 0) {
+      if (!stockItem) {
         stillExists.part = part
         stillExists.status = 'error'
         stillExists.errorMessage = `No stock items found for part: ${part.name}`
@@ -238,17 +254,17 @@ export const useStockTakingLog = (inventreeService?: InventreeService): UseStock
         return
       }
 
-      const firstStockItem = stockItems[0]!
       stillExists.part = part
-      stillExists.stockItemPk = firstStockItem.pk
-      stillExists.systemCount = firstStockItem.quantity
-      stillExists.confirmedCount = firstStockItem.quantity
-      stillExists.systemLocation = firstStockItem.location
+      stillExists.stockItemPk = stockItem.pk
+      stillExists.systemCount = stockItem.quantity
+      stillExists.confirmedCount = stockItem.quantity
+      stillExists.systemLocation = stockItem.location
+      stillExists.batch = stockItem.batch ?? null
       // Default to the active (scanned) location if one is set and valid,
       // otherwise keep the item's current system location.
       stillExists.confirmedLocation = (activeLocation.value && activeLocation.value.pk > 0)
         ? activeLocation.value.pk
-        : firstStockItem.location
+        : stockItem.location
       stillExists.status = 'loaded'
       logEntries.value = [...logEntries.value]
       saveToStorage()

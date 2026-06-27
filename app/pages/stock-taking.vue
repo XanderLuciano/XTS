@@ -412,6 +412,23 @@ onMounted(() => {
                 <p class="text-sm text-gray-500">
                   System: {{ entry.systemCount }} | Barcode: {{ entry.barcode }}
                 </p>
+                <div
+                  v-if="entry.batch"
+                  class="flex items-center gap-1.5 mt-1"
+                >
+                  <UIcon
+                    name="i-lucide-box"
+                    class="w-3.5 h-3.5 text-gray-400 shrink-0"
+                  />
+                  <span class="text-xs text-gray-500">Batch/Vendor:</span>
+                  <UBadge
+                    color="neutral"
+                    variant="subtle"
+                    size="sm"
+                  >
+                    {{ entry.batch }}
+                  </UBadge>
+                </div>
                 <div class="flex items-center gap-1.5 mt-1">
                   <UIcon
                     name="i-lucide-map-pin"

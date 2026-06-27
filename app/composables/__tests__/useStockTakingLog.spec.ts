@@ -20,7 +20,17 @@ function createMockInventreeService() {
   const searchParts = vi.spyOn(service, 'searchParts')
   const getStockItems = vi.spyOn(service, 'getStockItems')
 
-  return { service, scanBarcode, searchParts, getStockItems }
+  // By default, scanBarcodeWithStock delegates to the configured scanBarcode
+  // mock and reports no specific stock item — this makes resolveEntry fall back
+  // to getStockItems[0], matching the legacy behaviour the existing tests rely
+  // on. Tests that exercise vendor/batch targeting override this directly.
+  const scanBarcodeWithStock = vi.spyOn(service, 'scanBarcodeWithStock')
+    .mockImplementation(async (barcode: string) => {
+      const part = await service.scanBarcode(barcode)
+      return { part, stockItem: null }
+    })
+
+  return { service, scanBarcode, scanBarcodeWithStock, searchParts, getStockItems }
 }
 
 function makePart(overrides: Partial<Part> = {}): Part {
@@ -229,6 +239,46 @@ describe('useStockTakingLog — addItem', () => {
     expect(entry!.stockItemPk).toBe(501)
     expect(entry!.systemCount).toBe(15)
     expect(entry!.confirmedCount).toBe(15)
+  })
+
+  it('targets the specific stock item a barcode is linked to (vendor/batch aware)', async () => {
+    const part = makePart({ pk: 7, name: 'Resistor' })
+    // The barcode points to the second vendor/batch stock line, not the first.
+    const targetStockItem = makeStockItem({ pk: 902, quantity: 33, batch: 'VENDOR-B', location: 4 })
+    mockService.scanBarcodeWithStock.mockResolvedValue({ part, stockItem: targetStockItem })
+    const getStockItems = mockService.getStockItems.mockResolvedValue([])
+
+    const log = useStockTakingLog(mockService.service)
+    const entry = log.addItem('BATCH-B-BARCODE')
+    await flushPromises()
+
+    expect(entry!.status).toBe('loaded')
+    expect(entry!.part).toEqual(part)
+    // Adjustment targets the exact stock line, preserving vendor/batch.
+    expect(entry!.stockItemPk).toBe(902)
+    expect(entry!.systemCount).toBe(33)
+    expect(entry!.confirmedCount).toBe(33)
+    expect(entry!.systemLocation).toBe(4)
+    expect(entry!.batch).toBe('VENDOR-B')
+    // Should not need to fall back to listing the part's stock items.
+    expect(getStockItems).not.toHaveBeenCalled()
+  })
+
+  it('falls back to the first stock item when the barcode is linked only to a part', async () => {
+    const part = makePart({ pk: 8, name: 'Capacitor' })
+    const firstStockItem = makeStockItem({ pk: 950, quantity: 12, batch: null })
+    // Barcode resolves a part but no specific stock item.
+    mockService.scanBarcodeWithStock.mockResolvedValue({ part, stockItem: null })
+    mockService.getStockItems.mockResolvedValue([firstStockItem])
+
+    const log = useStockTakingLog(mockService.service)
+    const entry = log.addItem('PART-ONLY-BARCODE')
+    await flushPromises()
+
+    expect(entry!.status).toBe('loaded')
+    expect(entry!.stockItemPk).toBe(950)
+    expect(entry!.systemCount).toBe(12)
+    expect(entry!.batch).toBeNull()
   })
 })
 
