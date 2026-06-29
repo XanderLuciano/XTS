@@ -45,9 +45,22 @@ let searchTimeout: ReturnType<typeof setTimeout> | null = null
 
 const totalPages = computed(() => Math.ceil(totalCount.value / pageSize.value))
 
-const vendorItems = computed(() =>
+const vendorItems = ref(
   VENDOR_OPTIONS.map(v => ({ label: v, value: v }))
 )
+
+/**
+ * Add a custom vendor typed by the user so it persists as the selected value.
+ * Without this, USelectMenu's create-item entry isn't committed to the model.
+ */
+const onCreateVendor = (value: string) => {
+  const trimmed = value.trim()
+  if (!trimmed) return
+  if (!vendorItems.value.some(item => item.value === trimmed)) {
+    vendorItems.value.push({ label: trimmed, value: trimmed })
+  }
+  editingBatchValue.value = trimmed
+}
 
 const fetchParts = async () => {
   isLoading.value = true
@@ -144,6 +157,10 @@ const saveCategory = async () => {
 const startEditBatch = (item: StockItem) => {
   editingBatchPk.value = item.pk
   editingBatchValue.value = item.batch || ''
+  // Ensure the existing (possibly custom) vendor is selectable in the dropdown.
+  if (item.batch && !vendorItems.value.some(v => v.value === item.batch)) {
+    vendorItems.value.push({ label: item.batch, value: item.batch })
+  }
 }
 
 const cancelEditBatch = () => {
@@ -719,6 +736,7 @@ onMounted(() => {
                             :create-item="true"
                             size="xs"
                             class="w-32"
+                            @create="onCreateVendor"
                           />
                           <UButton
                             size="xs"

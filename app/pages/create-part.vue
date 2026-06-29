@@ -7,6 +7,10 @@ import { sanitizeRevision } from '~/utils/sanitizeRevision'
 // Pre-defined vendor options
 const VENDOR_OPTIONS = ['YihShan', 'UMT', 'NRG', 'Prime', 'CIM', 'CIMTAS', 'KMS']
 
+// Printer settings (respect the user's global local-USB vs remote choice)
+const { print: printLabel, load: loadPrinterSettings } = usePrinterSettings()
+const { listenForUsbEvents, reconnect: reconnectLocalPrinter } = useLocalPrinter()
+
 interface PartForm {
   name: string
   description: string
@@ -43,9 +47,22 @@ const partForm = reactive<PartForm>({
   labelMode: 'one'
 })
 
-const vendorItems = computed(() =>
+const vendorItems = ref(
   VENDOR_OPTIONS.map(v => ({ label: v, value: v }))
 )
+
+/**
+ * Add a custom vendor typed by the user so it persists as the selected value.
+ * Without this, USelectMenu's create-item entry isn't committed to the model.
+ */
+const onCreateVendor = (value: string) => {
+  const trimmed = value.trim()
+  if (!trimmed) return
+  if (!vendorItems.value.some(item => item.value === trimmed)) {
+    vendorItems.value.push({ label: trimmed, value: trimmed })
+  }
+  partForm.vendor = trimmed
+}
 
 const ticketValidation = computed(() => {
   if (!partForm.jiraTickets.trim()) return { valid: true, message: '' }
@@ -58,6 +75,12 @@ const ticketValidation = computed(() => {
 
 // Hydrate persisted settings on mount to avoid SSR mismatch
 onMounted(async () => {
+  // Initialise printer preference + local USB listener so the print option
+  // honours the global config (local vs remote).
+  loadPrinterSettings()
+  listenForUsbEvents()
+  reconnectLocalPrinter()
+
   try {
     const storedPrintLabels = localStorage.getItem('create_part_print_labels')
     if (storedPrintLabels === 'true') {
@@ -434,22 +457,19 @@ const createPart = async () => {
             : 1
           const quantity = partForm.labelMode === 'one' ? partForm.stockQuantity : undefined
 
-          const printerUrl = localStorage.getItem('zebra_printer_url') || ''
-          const printerApiKey = localStorage.getItem('zebra_api_key') || ''
-
           for (let i = 0; i < labelCount; i++) {
-            await $fetch('/api/print-label', {
-              method: 'POST',
-              body: {
-                barcode,
-                partName: partForm.name,
-                partNumber: partForm.IPN || 'N/A',
-                quantity,
-                vendor: partForm.vendor || undefined,
-                printerUrl: printerUrl || undefined,
-                apiKey: printerApiKey || undefined
-              }
+            // Route through usePrinterSettings so the user's configured
+            // method (local USB vs remote server) is respected.
+            const printResult = await printLabel({
+              barcode,
+              partName: partForm.name,
+              partNumber: partForm.IPN || 'N/A',
+              quantity,
+              vendor: partForm.vendor || undefined
             })
+            if (!printResult.success) {
+              throw new Error(printResult.error || 'Failed to print label')
+            }
           }
         }
 
@@ -589,6 +609,7 @@ const createPart = async () => {
             :search-input="true"
             :create-item="true"
             class="w-full"
+            @create="onCreateVendor"
           />
         </UFormField>
 
