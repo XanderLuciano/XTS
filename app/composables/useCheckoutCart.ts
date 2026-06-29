@@ -1,6 +1,7 @@
 import { ref, computed, type Ref, type ComputedRef } from 'vue'
 import type { Part } from '~/types/inventree'
 import type { InventreeService } from '~/services/inventree.service'
+import type { ReceiptLine } from '~/utils/checkoutReceipt'
 
 /**
  * Cart item status representing the lifecycle of a scanned item
@@ -38,6 +39,22 @@ export interface CheckoutResult {
   processedItems: number
   failedItems: CartItem[]
   message: string
+  /**
+   * Receipt lines for each stock removal performed, populated only when a
+   * receipt was requested for the checkout. One cart item may yield multiple
+   * lines when its quantity is drawn from several stock items.
+   */
+  receiptLines?: ReceiptLine[]
+}
+
+/**
+ * Options for a checkout operation.
+ */
+export interface CheckoutOptions {
+  /** Free-text reason recorded against each stock removal in InvenTree. */
+  reason?: string
+  /** When true, collect {@link ReceiptLine}s describing what was removed. */
+  makeReceipt?: boolean
 }
 
 /**
@@ -55,7 +72,7 @@ export interface UseCheckoutCart {
   removeItem: (itemId: string) => CartItem | null
   voidLastItem: () => CartItem | null
   clearCart: () => void
-  checkout: () => Promise<CheckoutResult>
+  checkout: (options?: CheckoutOptions) => Promise<CheckoutResult>
   setSearchMode: (mode: 'barcode' | 'part') => void
 
   // Computed
@@ -355,10 +372,14 @@ export const useCheckoutCart = (inventreeService?: InventreeService): UseCheckou
 
   /**
    * Processes checkout for all valid cart items
+   * @param options - Optional reason text and receipt generation flag
    * @returns CheckoutResult with success status and details
    * @see Requirements 6.1, 6.3, 6.4, 6.5
    */
-  const checkout = async (): Promise<CheckoutResult> => {
+  const checkout = async (options: CheckoutOptions = {}): Promise<CheckoutResult> => {
+    const reason = (options.reason || '').trim()
+    const makeReceipt = options.makeReceipt === true
+    const receiptLines: ReceiptLine[] = []
     // Validate cart state
     if (cartItems.value.length === 0) {
       return {
@@ -451,11 +472,30 @@ export const useCheckoutCart = (inventreeService?: InventreeService): UseCheckou
             // Calculate how much to remove from this stock item
             const removeFromThis = Math.min(remainingToRemove, stockItem.quantity)
 
+            // Build the removal note: prefer the user-supplied reason, always
+            // retaining the scanned barcode for traceability.
+            const removalNote = reason
+              ? `${reason} (barcode: ${item.barcode})`
+              : `Self-checkout kiosk removal for barcode: ${item.barcode}`
+
             // Remove stock from this stock item
             await inventreeService.removeStock(stockItem.pk, {
               quantity: removeFromThis,
-              notes: `Self-checkout kiosk removal for barcode: ${item.barcode}`
+              notes: removalNote
             })
+
+            // Record a receipt line for what was pulled from this stock item.
+            if (makeReceipt) {
+              receiptLines.push({
+                partName: item.part.name,
+                ipn: item.part.IPN,
+                revision: item.part.revision,
+                vendor: stockItem.batch,
+                quantity: removeFromThis,
+                stockNotes: stockItem.notes || '',
+                stockItemPk: stockItem.pk
+              })
+            }
 
             totalRemoved += removeFromThis
             remainingToRemove -= removeFromThis
@@ -490,7 +530,8 @@ export const useCheckoutCart = (inventreeService?: InventreeService): UseCheckou
           success: true,
           processedItems: processedCount,
           failedItems: [],
-          message: `Successfully checked out ${processedCount} item(s)`
+          message: `Successfully checked out ${processedCount} item(s)`,
+          receiptLines: makeReceipt ? receiptLines : undefined
         }
       } else if (processedCount > 0) {
         // Partial success - remove successful items, keep failed items in cart
@@ -507,7 +548,8 @@ export const useCheckoutCart = (inventreeService?: InventreeService): UseCheckou
           success: false,
           processedItems: processedCount,
           failedItems: [...failedItems],
-          message: `Partially completed: ${processedCount} item(s) checked out, ${failedItems.length} failed`
+          message: `Partially completed: ${processedCount} item(s) checked out, ${failedItems.length} failed`,
+          receiptLines: makeReceipt ? receiptLines : undefined
         }
       } else {
         // All items failed - keep cart intact for retry

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { resolveImageUrl as _resolveImageUrl } from '~/utils/resolveImageUrl'
+import { buildCheckoutReceiptMarkdown, type ReceiptLine } from '~/utils/checkoutReceipt'
 
 const toast = useToast()
 const config = useRuntimeConfig()
@@ -35,6 +36,43 @@ const {
 // Barcode input state
 const barcodeInput = ref('')
 const barcodeInputRef = ref<HTMLInputElement | null>(null)
+
+// Optional checkout reason recorded against each stock removal in InvenTree
+const checkoutReason = ref('')
+
+// Receipt opt-in + generated receipt state
+const makeReceipt = ref(false)
+const receiptLines = ref<ReceiptLine[]>([])
+const receiptReason = ref('')
+const receiptGeneratedAt = ref<Date | null>(null)
+
+/** Markdown receipt rendered from the last checkout, for copy/paste + print. */
+const receiptMarkdown = computed(() =>
+  buildCheckoutReceiptMarkdown({
+    lines: receiptLines.value,
+    reason: receiptReason.value,
+    generatedAt: receiptGeneratedAt.value ?? new Date()
+  })
+)
+
+const copyReceipt = async () => {
+  try {
+    await navigator.clipboard.writeText(receiptMarkdown.value)
+    toast.add({ title: 'Receipt copied to clipboard', color: 'success' })
+  } catch {
+    toast.add({ title: 'Copy failed', description: 'Select and copy manually', color: 'error' })
+  }
+}
+
+const printReceipt = () => {
+  window.print()
+}
+
+const dismissReceipt = () => {
+  receiptLines.value = []
+  receiptGeneratedAt.value = null
+  receiptReason.value = ''
+}
 
 /**
  * Handles barcode scan (Enter key press)
@@ -129,9 +167,19 @@ const handleCheckout = async () => {
     return
   }
 
-  const result = await checkout()
+  const result = await checkout({
+    reason: checkoutReason.value,
+    makeReceipt: makeReceipt.value
+  })
 
   if (result.success) {
+    // Capture receipt lines (if requested) before the cart is cleared.
+    if (makeReceipt.value && result.receiptLines && result.receiptLines.length > 0) {
+      receiptLines.value = result.receiptLines
+      receiptReason.value = checkoutReason.value.trim()
+      receiptGeneratedAt.value = new Date()
+    }
+    checkoutReason.value = ''
     toast.add({
       title: 'Checkout complete',
       description: result.message,
@@ -198,7 +246,7 @@ onMounted(() => {
 
 <template>
   <div class="p-6 w-full max-w-4xl mx-auto">
-    <div class="mb-6">
+    <div class="mb-6 print:hidden">
       <h1 class="text-2xl font-bold mb-1">
         Self-Checkout
       </h1>
@@ -207,7 +255,7 @@ onMounted(() => {
       </p>
     </div>
 
-    <UCard>
+    <UCard class="print:hidden">
       <template #header>
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2">
@@ -398,42 +446,124 @@ onMounted(() => {
       </div>
 
       <template #footer>
-        <div class="flex flex-wrap gap-4 justify-end">
-          <UButton
-            color="warning"
-            variant="outline"
-            size="lg"
-            icon="i-lucide-undo-2"
-            @click="handleVoidLast"
-          >
-            Void Last <UKbd
-              value="Esc"
-              size="sm"
+        <div class="space-y-4">
+          <!-- Optional checkout reason + receipt opt-in -->
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div class="flex-1">
+              <label class="block text-xs font-medium text-gray-500 mb-1">
+                Checkout reason (optional)
+              </label>
+              <UInput
+                v-model="checkoutReason"
+                placeholder="e.g. prototype build, RMA, customer sample..."
+                icon="i-lucide-message-square-text"
+                class="w-full"
+              />
+              <p class="text-xs text-gray-400 mt-1">
+                Recorded against each stock removal in InvenTree.
+              </p>
+            </div>
+            <UCheckbox
+              v-model="makeReceipt"
+              label="Make a receipt"
+              class="sm:pb-7"
             />
-          </UButton>
+          </div>
 
-          <UButton
-            color="neutral"
-            variant="outline"
-            size="lg"
-            icon="i-lucide-trash"
-            @click="handleClearCart"
-          >
-            Clear Cart
-          </UButton>
+          <div class="flex flex-wrap gap-4 justify-end">
+            <UButton
+              color="warning"
+              variant="outline"
+              size="lg"
+              icon="i-lucide-undo-2"
+              @click="handleVoidLast"
+            >
+              Void Last <UKbd
+                value="Esc"
+                size="sm"
+              />
+            </UButton>
 
-          <UButton
-            color="primary"
-            size="lg"
-            icon="i-lucide-check"
-            :loading="isCheckingOut"
-            :disabled="hasErrors || isEmpty || isCheckingOut || hasStockWarnings"
-            @click="handleCheckout"
-          >
-            Checkout
-          </UButton>
+            <UButton
+              color="neutral"
+              variant="outline"
+              size="lg"
+              icon="i-lucide-trash"
+              @click="handleClearCart"
+            >
+              Clear Cart
+            </UButton>
+
+            <UButton
+              color="primary"
+              size="lg"
+              icon="i-lucide-check"
+              :loading="isCheckingOut"
+              :disabled="hasErrors || isEmpty || isCheckingOut || hasStockWarnings"
+              @click="handleCheckout"
+            >
+              Checkout
+            </UButton>
+          </div>
         </div>
       </template>
     </UCard>
+
+    <!-- ============ Checkout Receipt ============ -->
+    <UCard
+      v-if="receiptLines.length > 0"
+      class="mt-6"
+    >
+      <template #header>
+        <div class="flex items-center justify-between print:hidden">
+          <div class="flex items-center gap-2">
+            <UIcon
+              name="i-lucide-receipt"
+              class="w-5 h-5 text-primary"
+            />
+            <h2 class="text-lg font-semibold">
+              Checkout Receipt
+            </h2>
+          </div>
+          <div class="flex gap-2">
+            <UButton
+              size="sm"
+              variant="outline"
+              icon="i-lucide-copy"
+              @click="copyReceipt"
+            >
+              Copy Markdown
+            </UButton>
+            <UButton
+              size="sm"
+              variant="outline"
+              icon="i-lucide-printer"
+              @click="printReceipt"
+            >
+              Print
+            </UButton>
+            <UButton
+              size="sm"
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-x"
+              @click="dismissReceipt"
+            >
+              Dismiss
+            </UButton>
+          </div>
+        </div>
+      </template>
+
+      <pre class="text-xs whitespace-pre-wrap font-mono bg-gray-50 dark:bg-gray-900 p-4 rounded-md overflow-x-auto">{{ receiptMarkdown }}</pre>
+    </UCard>
   </div>
 </template>
+
+<style>
+@media print {
+  .print\:hidden {
+    display: none !important;
+  }
+}
+</style>
