@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { resolveImageUrl as _resolveImageUrl } from '~/utils/resolveImageUrl'
-import { buildCheckoutReceiptMarkdown, type ReceiptLine } from '~/utils/checkoutReceipt'
+import { buildCheckoutReceiptMarkdown, buildCheckoutReceiptCsv, type ReceiptLine } from '~/utils/checkoutReceipt'
 
 const toast = useToast()
 const config = useRuntimeConfig()
@@ -55,6 +55,16 @@ const receiptMarkdown = computed(() =>
   })
 )
 
+/** Total quantity of items removed, shown in the receipt header. */
+const receiptTotalQty = computed(() =>
+  receiptLines.value.reduce((sum, l) => sum + l.quantity, 0)
+)
+
+/** Human-friendly generated timestamp for the rendered receipt. */
+const receiptGeneratedLabel = computed(() =>
+  (receiptGeneratedAt.value ?? new Date()).toLocaleString()
+)
+
 const copyReceipt = async () => {
   try {
     await navigator.clipboard.writeText(receiptMarkdown.value)
@@ -66,6 +76,29 @@ const copyReceipt = async () => {
 
 const printReceipt = () => {
   window.print()
+}
+
+/** Build a timestamped filename like checkout-receipt-2026-06-29T12-00-00.csv */
+const receiptFilename = (ext: string): string => {
+  const ts = (receiptGeneratedAt.value ?? new Date())
+    .toISOString()
+    .replace(/[:.]/g, '-')
+  return `checkout-receipt-${ts}.${ext}`
+}
+
+const saveCsv = () => {
+  const csv = buildCheckoutReceiptCsv(receiptLines.value)
+  // Prepend a BOM so Excel reads UTF-8 correctly.
+  const blob = new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = receiptFilename('csv')
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+  toast.add({ title: 'CSV saved', color: 'success' })
 }
 
 const dismissReceipt = () => {
@@ -512,7 +545,7 @@ onMounted(() => {
     <!-- ============ Checkout Receipt ============ -->
     <UCard
       v-if="receiptLines.length > 0"
-      class="mt-6"
+      class="mt-6 receipt-card"
     >
       <template #header>
         <div class="flex items-center justify-between print:hidden">
@@ -537,6 +570,14 @@ onMounted(() => {
             <UButton
               size="sm"
               variant="outline"
+              icon="i-lucide-file-spreadsheet"
+              @click="saveCsv"
+            >
+              Save CSV
+            </UButton>
+            <UButton
+              size="sm"
+              variant="outline"
               icon="i-lucide-printer"
               @click="printReceipt"
             >
@@ -555,7 +596,105 @@ onMounted(() => {
         </div>
       </template>
 
-      <pre class="text-xs whitespace-pre-wrap font-mono bg-gray-50 dark:bg-gray-900 p-4 rounded-md overflow-x-auto">{{ receiptMarkdown }}</pre>
+      <!-- Rendered, human-readable receipt (also what gets printed) -->
+      <div class="receipt-body">
+        <div class="hidden print:block mb-4">
+          <h1 class="text-xl font-bold">
+            Checkout Receipt
+          </h1>
+        </div>
+
+        <dl class="text-sm mb-4 space-y-1">
+          <div class="flex gap-2">
+            <dt class="font-medium text-gray-500 dark:text-gray-400 w-32">
+              Generated
+            </dt>
+            <dd>{{ receiptGeneratedLabel }}</dd>
+          </div>
+          <div
+            v-if="receiptReason"
+            class="flex gap-2"
+          >
+            <dt class="font-medium text-gray-500 dark:text-gray-400 w-32">
+              Reason
+            </dt>
+            <dd>{{ receiptReason }}</dd>
+          </div>
+          <div class="flex gap-2">
+            <dt class="font-medium text-gray-500 dark:text-gray-400 w-32">
+              Total removed
+            </dt>
+            <dd>{{ receiptTotalQty }}</dd>
+          </div>
+        </dl>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm border-collapse receipt-table">
+            <thead>
+              <tr class="border-b-2 border-gray-300 dark:border-gray-600 text-left">
+                <th class="py-2 pr-3 font-semibold">
+                  Part
+                </th>
+                <th class="py-2 px-3 font-semibold">
+                  IPN
+                </th>
+                <th class="py-2 px-3 font-semibold">
+                  Rev
+                </th>
+                <th class="py-2 px-3 font-semibold">
+                  Vendor
+                </th>
+                <th class="py-2 px-3 font-semibold text-right">
+                  Qty
+                </th>
+                <th class="py-2 pl-3 font-semibold">
+                  Stock Notes
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="(line, idx) in receiptLines"
+                :key="`${line.stockItemPk}-${idx}`"
+                class="border-b border-gray-200 dark:border-gray-700"
+              >
+                <td class="py-2 pr-3">
+                  {{ line.partName }}
+                </td>
+                <td class="py-2 px-3 font-mono">
+                  {{ line.ipn || '—' }}
+                </td>
+                <td class="py-2 px-3">
+                  {{ line.revision || '—' }}
+                </td>
+                <td class="py-2 px-3">
+                  {{ line.vendor || '—' }}
+                </td>
+                <td class="py-2 px-3 text-right tabular-nums">
+                  {{ line.quantity }}
+                </td>
+                <td class="py-2 pl-3 text-gray-600 dark:text-gray-400">
+                  {{ line.stockNotes || '—' }}
+                </td>
+              </tr>
+            </tbody>
+            <tfoot>
+              <tr class="border-t-2 border-gray-300 dark:border-gray-600 font-semibold">
+                <td
+                  class="py-2 pr-3"
+                  colspan="4"
+                >
+                  Total
+                </td>
+                <td class="py-2 px-3 text-right tabular-nums">
+                  {{ receiptTotalQty }}
+                </td>
+                <td class="py-2 pl-3" />
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
     </UCard>
   </div>
 </template>
@@ -564,6 +703,17 @@ onMounted(() => {
 @media print {
   .print\:hidden {
     display: none !important;
+  }
+
+  /* Show only the receipt when printing, laid out for a clean paper copy. */
+  .receipt-card {
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  .receipt-table th,
+  .receipt-table td {
+    border-color: #999 !important;
   }
 }
 </style>

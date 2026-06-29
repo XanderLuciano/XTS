@@ -74,3 +74,36 @@ export function buildCheckoutReceiptMarkdown(params: {
 
   return out.join('\n')
 }
+
+/** Quote a CSV field, escaping embedded quotes and wrapping when needed. */
+function csvCell(value: string | number): string {
+  const str = String(value)
+  if (/[",\n\r]/.test(str)) {
+    return `"${str.replace(/"/g, '""')}"`
+  }
+  return str
+}
+
+/**
+ * Render the receipt as CSV text suitable for "Save CSV".
+ *
+ * Columns: Part, IPN, Rev, Vendor, Qty, Stock Notes
+ * Uses CRLF line endings for broad spreadsheet compatibility.
+ */
+export function buildCheckoutReceiptCsv(lines: ReceiptLine[]): string {
+  const rows: string[] = []
+  rows.push(['Part', 'IPN', 'Rev', 'Vendor', 'Qty', 'Stock Notes'].join(','))
+
+  for (const line of lines) {
+    rows.push([
+      csvCell(line.partName),
+      csvCell(line.ipn || ''),
+      csvCell(line.revision || ''),
+      csvCell(line.vendor || ''),
+      csvCell(line.quantity),
+      csvCell(line.stockNotes || '')
+    ].join(','))
+  }
+
+  return rows.join('\r\n')
+}

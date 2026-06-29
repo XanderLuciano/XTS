@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildCheckoutReceiptMarkdown, type ReceiptLine } from '../checkoutReceipt'
+import { buildCheckoutReceiptMarkdown, buildCheckoutReceiptCsv, type ReceiptLine } from '../checkoutReceipt'
 
 /**
  * Tests for the checkout receipt markdown builder.
@@ -62,5 +62,39 @@ describe('buildCheckoutReceiptMarkdown', () => {
   it('escapes pipe characters so the table is not broken', () => {
     const md = buildCheckoutReceiptMarkdown({ lines: [makeLine({ stockNotes: 'a|b' })] })
     expect(md).toContain('a\\|b')
+  })
+})
+
+describe('buildCheckoutReceiptCsv', () => {
+  it('renders a header row', () => {
+    const csv = buildCheckoutReceiptCsv([makeLine()])
+    expect(csv.split('\r\n')[0]).toBe('Part,IPN,Rev,Vendor,Qty,Stock Notes')
+  })
+
+  it('renders one data row per line with CRLF separators', () => {
+    const csv = buildCheckoutReceiptCsv([
+      makeLine({ quantity: 2 }),
+      makeLine({ partName: 'Gadget', quantity: 5, stockItemPk: 11 })
+    ])
+    const rows = csv.split('\r\n')
+    expect(rows).toHaveLength(3)
+    expect(rows[1]).toBe('Widget,PN-001,A,NRG,2,top shelf')
+    expect(rows[2]).toBe('Gadget,PN-001,A,NRG,5,top shelf')
+  })
+
+  it('quotes fields containing commas, quotes, or newlines', () => {
+    const csv = buildCheckoutReceiptCsv([
+      makeLine({ partName: 'Widget, large', stockNotes: 'has "quote"' })
+    ])
+    const row = csv.split('\r\n')[1]
+    expect(row).toContain('"Widget, large"')
+    expect(row).toContain('"has ""quote"""')
+  })
+
+  it('leaves empty cells blank for missing vendor and notes', () => {
+    const csv = buildCheckoutReceiptCsv([
+      makeLine({ vendor: null, stockNotes: '', ipn: '', revision: '' })
+    ])
+    expect(csv.split('\r\n')[1]).toBe('Widget,,,,2,')
   })
 })
