@@ -1,7 +1,8 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import fc from 'fast-check'
 import { useCheckoutCart, type CartItem } from '../useCheckoutCart'
 import { InventreeService } from '~/services/inventree.service'
+import type { Part, StockItem } from '~/types/inventree'
 
 /**
  * Property-based tests for useCheckoutCart composable
@@ -15,6 +16,23 @@ const barcodeArb = fc.string({ minLength: 1, maxLength: 50 })
   .filter(s => s.trim().length > 0)
 
 describe('useCheckoutCart', () => {
+  // Barcode-mode lookups now use `scanBarcodeWithStock`. Existing tests mock the
+  // older `scanBarcode` method, so by default delegate `scanBarcodeWithStock` to
+  // each instance's `scanBarcode` mock, yielding a part-only result (no stock
+  // item) that preserves the pre-feature behavior. Tests that need stock-item
+  // resolution override `scanBarcodeWithStock` on their own service instance.
+  beforeEach(() => {
+    vi.spyOn(InventreeService.prototype, 'scanBarcodeWithStock')
+      .mockImplementation(async function (this: InventreeService, barcode: string) {
+        const part = await this.scanBarcode(barcode)
+        return { part, stockItem: null }
+      })
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   describe('Property 1: Adding item adds to cart', () => {
     /**
      * **Validates: Requirements 2.1**
@@ -2881,6 +2899,1255 @@ describe('useCheckoutCart', () => {
               const actualOrder = testCart.getModificationOrder()
               expect(actualOrder).toEqual(expectedOrder)
             }
+          }
+        ),
+        { numRuns: 100 }
+      )
+    })
+  })
+
+  // Feature: stock-aware-checkout, Property 1: Scan-type classification from lookup
+  describe('Stock-aware checkout Property 1: Scan-type classification from lookup', () => {
+    /**
+     * **Validates: Requirements 1.2, 1.3**
+     *
+     * For any barcode where `scanBarcodeWithStock` returns a non-null `stockItem`,
+     * the resulting CartItem has `scanType === 'stock_item'` and `stockItem` equal
+     * to the returned stock item. For any barcode returning a part with a null
+     * `stockItem`, the CartItem has `scanType === 'part'` and no `stockItem`.
+     */
+
+    // Arbitrary for a random Part with varying in_stock
+    const partArb = fc.record({
+      pk: fc.integer({ min: 1, max: 100000 }),
+      name: fc.string({ minLength: 1, maxLength: 40 }),
+      description: fc.string({ maxLength: 80 }),
+      IPN: fc.string({ maxLength: 20 }),
+      revision: fc.string({ maxLength: 10 }),
+      category: fc.option(fc.integer({ min: 1, max: 1000 }), { nil: null }),
+      active: fc.boolean(),
+      virtual: fc.boolean(),
+      component: fc.boolean(),
+      assembly: fc.boolean(),
+      purchaseable: fc.boolean(),
+      salable: fc.boolean(),
+      trackable: fc.boolean(),
+      in_stock: fc.integer({ min: 0, max: 10000 }),
+      link: fc.string({ maxLength: 30 }),
+      image: fc.option(fc.string({ maxLength: 30 }), { nil: null }),
+      thumbnail: fc.option(fc.string({ maxLength: 30 }), { nil: null })
+    }) as fc.Arbitrary<Part>
+
+    // Arbitrary for a random StockItem (varying quantity, batch)
+    const stockItemArb = (partPk: number): fc.Arbitrary<StockItem> => fc.record({
+      pk: fc.integer({ min: 1, max: 100000 }),
+      part: fc.constant(partPk),
+      quantity: fc.integer({ min: 0, max: 10000 }),
+      location: fc.option(fc.integer({ min: 1, max: 1000 }), { nil: null }),
+      serial: fc.option(fc.string({ maxLength: 20 }), { nil: null }),
+      batch: fc.option(fc.string({ maxLength: 20 }), { nil: null }),
+      barcode_hash: fc.string({ maxLength: 30 }),
+      notes: fc.string({ maxLength: 40 })
+    }) as fc.Arbitrary<StockItem>
+
+    /**
+     * Builds a mock InventreeService whose per-instance `scanBarcodeWithStock`
+     * returns the given `{ part, stockItem }` result, overriding the default
+     * prototype spy installed in `beforeEach`.
+     */
+    const createStockAwareService = (
+      part: Part | null,
+      stockItem: StockItem | null
+    ): InventreeService => {
+      const mockApi = vi.fn()
+      const service = new InventreeService(mockApi)
+      vi.spyOn(service, 'scanBarcodeWithStock').mockResolvedValue({ part, stockItem })
+      return service
+    }
+
+    it('classifies as stock_item and stores the returned stock item when a stock item resolves', async () => {
+      await fc.assert(
+        fc.asyncProperty(
+          barcodeArb,
+          partArb.chain(part =>
+            stockItemArb(part.pk).map(stockItem => ({ part, stockItem }))
+          ),
+          async (barcode, { part, stockItem }) => {
+            const mockService = createStockAwareService(part, stockItem)
+            const testCart = useCheckoutCart(mockService)
+
+            const result = testCart.addOrIncrementItem(barcode)
+            expect(result).not.toBeNull()
+            const itemId = result!.id
+
+            // Wait for the fire-and-forget lookup to resolve
+            await new Promise(resolve => setTimeout(resolve, 10))
+
+            const cartItem = testCart.cartItems.value.find(i => i.id === itemId)
+            expect(cartItem).toBeDefined()
+            expect(cartItem!.status).toBe('loaded')
+
+            // Requirement 1.2: stock item resolved -> scanType stock_item + stored
+            expect(cartItem!.scanType).toBe('stock_item')
+            expect(cartItem!.stockItem).toEqual(stockItem)
+            expect(cartItem!.part).toEqual(part)
+          }
+        ),
+        { numRuns: 100 }
+      )
+    })
+
+    it('classifies as part with no stock item when only a part resolves', async () => {
+      await fc.assert(
+        fc.asyncProperty(
+          barcodeArb,
+          partArb,
+          async (barcode, part) => {
+            const mockService = createStockAwareService(part, null)
+            const testCart = useCheckoutCart(mockService)
+
+            const result = testCart.addOrIncrementItem(barcode)
+            expect(result).not.toBeNull()
+            const itemId = result!.id
+
+            // Wait for the fire-and-forget lookup to resolve
+            await new Promise(resolve => setTimeout(resolve, 10))
+
+            const cartItem = testCart.cartItems.value.find(i => i.id === itemId)
+            expect(cartItem).toBeDefined()
+            expect(cartItem!.status).toBe('loaded')
+
+            // Requirement 1.3: part-only resolution -> scanType part, no stock item
+            expect(cartItem!.scanType).toBe('part')
+            expect(cartItem!.stockItem).toBeUndefined()
+            expect(cartItem!.part).toEqual(part)
+          }
+        ),
+        { numRuns: 100 }
+      )
+    })
+  })
+
+  // Feature: stock-aware-checkout, Property 2: Not-found and error classification
+  describe('Stock-aware checkout Property 2: Not-found and error classification', () => {
+    /**
+     * **Validates: Requirements 1.4, 1.5**
+     *
+     * For any barcode where `scanBarcodeWithStock` returns
+     * `{ part: null, stockItem: null }`, the resulting CartItem transitions to
+     * `status === 'error'`. For any barcode where the call throws, the CartItem
+     * transitions to `status === 'error'` with the thrown message.
+     */
+
+    /**
+     * Builds a mock InventreeService whose per-instance `scanBarcodeWithStock`
+     * resolves to a not-found result `{ part: null, stockItem: null }`,
+     * overriding the default prototype spy installed in `beforeEach`.
+     */
+    const createNotFoundService = (): InventreeService => {
+      const mockApi = vi.fn()
+      const service = new InventreeService(mockApi)
+      vi.spyOn(service, 'scanBarcodeWithStock')
+        .mockResolvedValue({ part: null, stockItem: null })
+      return service
+    }
+
+    /**
+     * Builds a mock InventreeService whose per-instance `scanBarcodeWithStock`
+     * rejects with an Error carrying the given message.
+     */
+    const createThrowingService = (errorMessage: string): InventreeService => {
+      const mockApi = vi.fn()
+      const service = new InventreeService(mockApi)
+      vi.spyOn(service, 'scanBarcodeWithStock')
+        .mockRejectedValue(new Error(errorMessage))
+      return service
+    }
+
+    it('transitions to error when the lookup returns neither a part nor a stock item', async () => {
+      await fc.assert(
+        fc.asyncProperty(
+          barcodeArb,
+          async (barcode) => {
+            const mockService = createNotFoundService()
+            const testCart = useCheckoutCart(mockService)
+
+            const result = testCart.addOrIncrementItem(barcode)
+            expect(result).not.toBeNull()
+            const itemId = result!.id
+
+            // Wait for the fire-and-forget lookup to resolve
+            await new Promise(resolve => setTimeout(resolve, 10))
+
+            const cartItem = testCart.cartItems.value.find(i => i.id === itemId)
+            expect(cartItem).toBeDefined()
+
+            // Requirement 1.4: neither part nor stock item -> error state
+            expect(cartItem!.status).toBe('error')
+            expect(cartItem!.errorMessage).toBeDefined()
+          }
+        ),
+        { numRuns: 100 }
+      )
+    })
+
+    it('transitions to error with the thrown message when the lookup throws', async () => {
+      const errorMessageArb = fc.string({ minLength: 1, maxLength: 100 })
+        .filter(s => s.trim().length > 0)
+
+      await fc.assert(
+        fc.asyncProperty(
+          barcodeArb,
+          errorMessageArb,
+          async (barcode, errorMessage) => {
+            const mockService = createThrowingService(errorMessage)
+            const testCart = useCheckoutCart(mockService)
+
+            const result = testCart.addOrIncrementItem(barcode)
+            expect(result).not.toBeNull()
+            const itemId = result!.id
+
+            // Wait for the fire-and-forget lookup to reject
+            await new Promise(resolve => setTimeout(resolve, 10))
+
+            const cartItem = testCart.cartItems.value.find(i => i.id === itemId)
+            expect(cartItem).toBeDefined()
+
+            // Requirement 1.5: thrown error -> error state with the thrown message
+            expect(cartItem!.status).toBe('error')
+            expect(cartItem!.errorMessage).toBe(errorMessage)
+          }
+        ),
+        { numRuns: 100 }
+      )
+    })
+  })
+
+  // Feature: stock-aware-checkout, Property 3: Full quantity on scan — stock item
+  describe('Stock-aware checkout Property 3: Full quantity on scan — stock item', () => {
+    /**
+     * **Validates: Requirements 3.4**
+     *
+     * For any stock_item scan with addFullQuantity enabled and a stock item
+     * quantity q > 0, the resulting CartItem.quantity === q.
+     */
+
+    // Arbitrary for a random Part with varying in_stock
+    const partArb = fc.record({
+      pk: fc.integer({ min: 1, max: 100000 }),
+      name: fc.string({ minLength: 1, maxLength: 40 }),
+      description: fc.string({ maxLength: 80 }),
+      IPN: fc.string({ maxLength: 20 }),
+      revision: fc.string({ maxLength: 10 }),
+      category: fc.option(fc.integer({ min: 1, max: 1000 }), { nil: null }),
+      active: fc.boolean(),
+      virtual: fc.boolean(),
+      component: fc.boolean(),
+      assembly: fc.boolean(),
+      purchaseable: fc.boolean(),
+      salable: fc.boolean(),
+      trackable: fc.boolean(),
+      in_stock: fc.integer({ min: 0, max: 10000 }),
+      link: fc.string({ maxLength: 30 }),
+      image: fc.option(fc.string({ maxLength: 30 }), { nil: null }),
+      thumbnail: fc.option(fc.string({ maxLength: 30 }), { nil: null })
+    }) as fc.Arbitrary<Part>
+
+    // Arbitrary for a random StockItem with a strictly positive quantity q > 0
+    const stockItemWithQtyArb = (partPk: number): fc.Arbitrary<StockItem> => fc.record({
+      pk: fc.integer({ min: 1, max: 100000 }),
+      part: fc.constant(partPk),
+      quantity: fc.integer({ min: 1, max: 10000 }),
+      location: fc.option(fc.integer({ min: 1, max: 1000 }), { nil: null }),
+      serial: fc.option(fc.string({ maxLength: 20 }), { nil: null }),
+      batch: fc.option(fc.string({ maxLength: 20 }), { nil: null }),
+      barcode_hash: fc.string({ maxLength: 30 }),
+      notes: fc.string({ maxLength: 40 })
+    }) as fc.Arbitrary<StockItem>
+
+    /**
+     * Builds a mock InventreeService whose per-instance `scanBarcodeWithStock`
+     * returns the given stock-item result, overriding the default prototype spy
+     * installed in `beforeEach`.
+     */
+    const createStockAwareService = (
+      part: Part,
+      stockItem: StockItem
+    ): InventreeService => {
+      const mockApi = vi.fn()
+      const service = new InventreeService(mockApi)
+      vi.spyOn(service, 'scanBarcodeWithStock').mockResolvedValue({ part, stockItem })
+      return service
+    }
+
+    it('sets the cart item quantity to the stock item quantity when addFullQuantity is enabled', async () => {
+      await fc.assert(
+        fc.asyncProperty(
+          barcodeArb,
+          partArb.chain(part =>
+            stockItemWithQtyArb(part.pk).map(stockItem => ({ part, stockItem }))
+          ),
+          async (barcode, { part, stockItem }) => {
+            const mockService = createStockAwareService(part, stockItem)
+            const testCart = useCheckoutCart(mockService)
+
+            // Scan with the Add_Full_Quantity toggle enabled
+            const result = testCart.addOrIncrementItem(barcode, { addFullQuantity: true })
+            expect(result).not.toBeNull()
+            const itemId = result!.id
+
+            // Wait for the fire-and-forget lookup to resolve and apply full qty
+            await new Promise(resolve => setTimeout(resolve, 10))
+
+            const cartItem = testCart.cartItems.value.find(i => i.id === itemId)
+            expect(cartItem).toBeDefined()
+            expect(cartItem!.status).toBe('loaded')
+            expect(cartItem!.scanType).toBe('stock_item')
+
+            // Requirement 3.4: quantity is set to the stock item's quantity q
+            expect(cartItem!.quantity).toBe(stockItem.quantity)
+          }
+        ),
+        { numRuns: 100 }
+      )
+    })
+  })
+
+  // Feature: stock-aware-checkout, Property 4: Full quantity on scan — part
+  describe('Stock-aware checkout Property 4: Full quantity on scan — part', () => {
+    /**
+     * **Validates: Requirements 3.5**
+     *
+     * For any part scan with addFullQuantity enabled and a part in_stock total
+     * t > 0, the resulting CartItem.quantity === t.
+     */
+
+    // Arbitrary for a random Part with a strictly positive in_stock total t > 0
+    const partWithStockArb = fc.record({
+      pk: fc.integer({ min: 1, max: 100000 }),
+      name: fc.string({ minLength: 1, maxLength: 40 }),
+      description: fc.string({ maxLength: 80 }),
+      IPN: fc.string({ maxLength: 20 }),
+      revision: fc.string({ maxLength: 10 }),
+      category: fc.option(fc.integer({ min: 1, max: 1000 }), { nil: null }),
+      active: fc.boolean(),
+      virtual: fc.boolean(),
+      component: fc.boolean(),
+      assembly: fc.boolean(),
+      purchaseable: fc.boolean(),
+      salable: fc.boolean(),
+      trackable: fc.boolean(),
+      in_stock: fc.integer({ min: 1, max: 10000 }),
+      link: fc.string({ maxLength: 30 }),
+      image: fc.option(fc.string({ maxLength: 30 }), { nil: null }),
+      thumbnail: fc.option(fc.string({ maxLength: 30 }), { nil: null })
+    }) as fc.Arbitrary<Part>
+
+    /**
+     * Builds a mock InventreeService whose per-instance `scanBarcodeWithStock`
+     * returns a part-only result (`stockItem: null`), overriding the default
+     * prototype spy installed in `beforeEach`.
+     */
+    const createPartOnlyService = (part: Part): InventreeService => {
+      const mockApi = vi.fn()
+      const service = new InventreeService(mockApi)
+      vi.spyOn(service, 'scanBarcodeWithStock').mockResolvedValue({ part, stockItem: null })
+      return service
+    }
+
+    it('sets the cart item quantity to the part in_stock total when addFullQuantity is enabled', async () => {
+      await fc.assert(
+        fc.asyncProperty(
+          barcodeArb,
+          partWithStockArb,
+          async (barcode, part) => {
+            const mockService = createPartOnlyService(part)
+            const testCart = useCheckoutCart(mockService)
+
+            // Scan with the Add_Full_Quantity toggle enabled
+            const result = testCart.addOrIncrementItem(barcode, { addFullQuantity: true })
+            expect(result).not.toBeNull()
+            const itemId = result!.id
+
+            // Wait for the fire-and-forget lookup to resolve and apply full qty
+            await new Promise(resolve => setTimeout(resolve, 10))
+
+            const cartItem = testCart.cartItems.value.find(i => i.id === itemId)
+            expect(cartItem).toBeDefined()
+            expect(cartItem!.status).toBe('loaded')
+            expect(cartItem!.scanType).toBe('part')
+
+            // Requirement 3.5: quantity is set to the part's in_stock total t
+            expect(cartItem!.quantity).toBe(part.in_stock)
+          }
+        ),
+        { numRuns: 100 }
+      )
+    })
+  })
+
+  // Feature: stock-aware-checkout, Property 5: Full quantity re-scan sets, not increments
+  describe('Stock-aware checkout Property 5: Full quantity re-scan sets, not increments', () => {
+    /**
+     * **Validates: Requirements 3.6**
+     *
+     * For any already-loaded CartItem rescanned with addFullQuantity enabled,
+     * the CartItem.quantity equals the full available quantity for its scan type
+     * (stockItem.quantity for stock_item, part.in_stock for part) — it is set,
+     * not incremented (i.e. not the previous quantity plus one).
+     */
+
+    // Arbitrary for a random Part with a strictly positive in_stock total t > 0
+    const partWithStockArb = fc.record({
+      pk: fc.integer({ min: 1, max: 100000 }),
+      name: fc.string({ minLength: 1, maxLength: 40 }),
+      description: fc.string({ maxLength: 80 }),
+      IPN: fc.string({ maxLength: 20 }),
+      revision: fc.string({ maxLength: 10 }),
+      category: fc.option(fc.integer({ min: 1, max: 1000 }), { nil: null }),
+      active: fc.boolean(),
+      virtual: fc.boolean(),
+      component: fc.boolean(),
+      assembly: fc.boolean(),
+      purchaseable: fc.boolean(),
+      salable: fc.boolean(),
+      trackable: fc.boolean(),
+      in_stock: fc.integer({ min: 1, max: 10000 }),
+      link: fc.string({ maxLength: 30 }),
+      image: fc.option(fc.string({ maxLength: 30 }), { nil: null }),
+      thumbnail: fc.option(fc.string({ maxLength: 30 }), { nil: null })
+    }) as fc.Arbitrary<Part>
+
+    // Arbitrary for a random StockItem with a strictly positive quantity q > 0
+    const stockItemWithQtyArb = (partPk: number): fc.Arbitrary<StockItem> => fc.record({
+      pk: fc.integer({ min: 1, max: 100000 }),
+      part: fc.constant(partPk),
+      quantity: fc.integer({ min: 1, max: 10000 }),
+      location: fc.option(fc.integer({ min: 1, max: 1000 }), { nil: null }),
+      serial: fc.option(fc.string({ maxLength: 20 }), { nil: null }),
+      batch: fc.option(fc.string({ maxLength: 20 }), { nil: null }),
+      barcode_hash: fc.string({ maxLength: 30 }),
+      notes: fc.string({ maxLength: 40 })
+    }) as fc.Arbitrary<StockItem>
+
+    /**
+     * Builds a mock InventreeService whose per-instance `scanBarcodeWithStock`
+     * returns the given stock-item result, overriding the default prototype spy
+     * installed in `beforeEach`.
+     */
+    const createStockAwareService = (
+      part: Part,
+      stockItem: StockItem
+    ): InventreeService => {
+      const mockApi = vi.fn()
+      const service = new InventreeService(mockApi)
+      vi.spyOn(service, 'scanBarcodeWithStock').mockResolvedValue({ part, stockItem })
+      return service
+    }
+
+    /**
+     * Builds a mock InventreeService whose per-instance `scanBarcodeWithStock`
+     * returns a part-only result (`stockItem: null`), overriding the default
+     * prototype spy installed in `beforeEach`.
+     */
+    const createPartOnlyService = (part: Part): InventreeService => {
+      const mockApi = vi.fn()
+      const service = new InventreeService(mockApi)
+      vi.spyOn(service, 'scanBarcodeWithStock').mockResolvedValue({ part, stockItem: null })
+      return service
+    }
+
+    it('re-scanning a loaded stock_item item sets quantity to the full stock item quantity, not previous + 1', async () => {
+      await fc.assert(
+        fc.asyncProperty(
+          barcodeArb,
+          partWithStockArb.chain(part =>
+            stockItemWithQtyArb(part.pk).map(stockItem => ({ part, stockItem }))
+          ),
+          // Number of initial toggle-off scans → establishes previousQuantity
+          fc.integer({ min: 1, max: 5 }),
+          async (barcode, { part, stockItem }, initialScans) => {
+            // Keep the "not previous + 1" assertion meaningful by excluding the
+            // coincidental case where the full quantity equals previous + 1.
+            fc.pre(stockItem.quantity !== initialScans + 1)
+
+            const mockService = createStockAwareService(part, stockItem)
+            const testCart = useCheckoutCart(mockService)
+
+            // Add the item first with the toggle OFF, scanned several times so
+            // the quantity is a plain increment count (previousQuantity).
+            let result: CartItem | null = null
+            for (let i = 0; i < initialScans; i++) {
+              result = testCart.addOrIncrementItem(barcode)
+            }
+            expect(result).not.toBeNull()
+            const itemId = result!.id
+
+            // Wait for the fire-and-forget lookup to resolve to a loaded item.
+            await new Promise(resolve => setTimeout(resolve, 10))
+
+            const cartItem = testCart.cartItems.value.find(i => i.id === itemId)
+            expect(cartItem).toBeDefined()
+            expect(cartItem!.status).toBe('loaded')
+            expect(cartItem!.scanType).toBe('stock_item')
+
+            const previousQuantity = cartItem!.quantity
+            expect(previousQuantity).toBe(initialScans)
+
+            // Re-scan the same barcode with the Add_Full_Quantity toggle enabled.
+            testCart.addOrIncrementItem(barcode, { addFullQuantity: true })
+
+            // Requirement 3.6: quantity is SET to the full stock item quantity...
+            expect(cartItem!.quantity).toBe(stockItem.quantity)
+            // ...not incremented by one from the previous quantity.
+            expect(cartItem!.quantity).not.toBe(previousQuantity + 1)
+          }
+        ),
+        { numRuns: 100 }
+      )
+    })
+
+    it('re-scanning a loaded part item sets quantity to the full part in_stock total, not previous + 1', async () => {
+      await fc.assert(
+        fc.asyncProperty(
+          barcodeArb,
+          partWithStockArb,
+          // Number of initial toggle-off scans → establishes previousQuantity
+          fc.integer({ min: 1, max: 5 }),
+          async (barcode, part, initialScans) => {
+            // Keep the "not previous + 1" assertion meaningful by excluding the
+            // coincidental case where the full quantity equals previous + 1.
+            fc.pre(part.in_stock !== initialScans + 1)
+
+            const mockService = createPartOnlyService(part)
+            const testCart = useCheckoutCart(mockService)
+
+            // Add the item first with the toggle OFF, scanned several times.
+            let result: CartItem | null = null
+            for (let i = 0; i < initialScans; i++) {
+              result = testCart.addOrIncrementItem(barcode)
+            }
+            expect(result).not.toBeNull()
+            const itemId = result!.id
+
+            // Wait for the fire-and-forget lookup to resolve to a loaded item.
+            await new Promise(resolve => setTimeout(resolve, 10))
+
+            const cartItem = testCart.cartItems.value.find(i => i.id === itemId)
+            expect(cartItem).toBeDefined()
+            expect(cartItem!.status).toBe('loaded')
+            expect(cartItem!.scanType).toBe('part')
+
+            const previousQuantity = cartItem!.quantity
+            expect(previousQuantity).toBe(initialScans)
+
+            // Re-scan the same barcode with the Add_Full_Quantity toggle enabled.
+            testCart.addOrIncrementItem(barcode, { addFullQuantity: true })
+
+            // Requirement 3.6: quantity is SET to the full part in_stock total...
+            expect(cartItem!.quantity).toBe(part.in_stock)
+            // ...not incremented by one from the previous quantity.
+            expect(cartItem!.quantity).not.toBe(previousQuantity + 1)
+          }
+        ),
+        { numRuns: 100 }
+      )
+    })
+  })
+
+  // Feature: stock-aware-checkout, Property 6: Full quantity fallback
+  describe('Stock-aware checkout Property 6: Full quantity fallback', () => {
+    /**
+     * **Validates: Requirements 3.7**
+     *
+     * For any scan with addFullQuantity enabled where the resolved full quantity
+     * is zero or undefined, the resulting CartItem.quantity === 1.
+     *
+     * Two zero/undefined sources are covered:
+     *  (a) a stock_item scan where stockItem.quantity === 0, and
+     *  (b) a part scan where part.in_stock === 0 or undefined.
+     */
+
+    // Arbitrary for a random Part with an explicitly zero in_stock total.
+    const partZeroStockArb = fc.record({
+      pk: fc.integer({ min: 1, max: 100000 }),
+      name: fc.string({ minLength: 1, maxLength: 40 }),
+      description: fc.string({ maxLength: 80 }),
+      IPN: fc.string({ maxLength: 20 }),
+      revision: fc.string({ maxLength: 10 }),
+      category: fc.option(fc.integer({ min: 1, max: 1000 }), { nil: null }),
+      active: fc.boolean(),
+      virtual: fc.boolean(),
+      component: fc.boolean(),
+      assembly: fc.boolean(),
+      purchaseable: fc.boolean(),
+      salable: fc.boolean(),
+      trackable: fc.boolean(),
+      // Zero or undefined in_stock → full quantity source is missing/zero.
+      in_stock: fc.constantFrom(0, undefined) as unknown as fc.Arbitrary<number>,
+      link: fc.string({ maxLength: 30 }),
+      image: fc.option(fc.string({ maxLength: 30 }), { nil: null }),
+      thumbnail: fc.option(fc.string({ maxLength: 30 }), { nil: null })
+    }) as fc.Arbitrary<Part>
+
+    // Arbitrary for a random Part with a valid positive in_stock (used for the
+    // stock_item case where the fallback comes from the stock item, not the part).
+    const partArb = fc.record({
+      pk: fc.integer({ min: 1, max: 100000 }),
+      name: fc.string({ minLength: 1, maxLength: 40 }),
+      description: fc.string({ maxLength: 80 }),
+      IPN: fc.string({ maxLength: 20 }),
+      revision: fc.string({ maxLength: 10 }),
+      category: fc.option(fc.integer({ min: 1, max: 1000 }), { nil: null }),
+      active: fc.boolean(),
+      virtual: fc.boolean(),
+      component: fc.boolean(),
+      assembly: fc.boolean(),
+      purchaseable: fc.boolean(),
+      salable: fc.boolean(),
+      trackable: fc.boolean(),
+      in_stock: fc.integer({ min: 0, max: 10000 }),
+      link: fc.string({ maxLength: 30 }),
+      image: fc.option(fc.string({ maxLength: 30 }), { nil: null }),
+      thumbnail: fc.option(fc.string({ maxLength: 30 }), { nil: null })
+    }) as fc.Arbitrary<Part>
+
+    // Arbitrary for a random StockItem with a zero quantity.
+    const stockItemZeroQtyArb = (partPk: number): fc.Arbitrary<StockItem> => fc.record({
+      pk: fc.integer({ min: 1, max: 100000 }),
+      part: fc.constant(partPk),
+      quantity: fc.constant(0),
+      location: fc.option(fc.integer({ min: 1, max: 1000 }), { nil: null }),
+      serial: fc.option(fc.string({ maxLength: 20 }), { nil: null }),
+      batch: fc.option(fc.string({ maxLength: 20 }), { nil: null }),
+      barcode_hash: fc.string({ maxLength: 30 }),
+      notes: fc.string({ maxLength: 40 })
+    }) as fc.Arbitrary<StockItem>
+
+    /**
+     * Builds a mock InventreeService whose per-instance `scanBarcodeWithStock`
+     * returns the given result, overriding the default prototype spy installed
+     * in `beforeEach`.
+     */
+    const createStockAwareService = (
+      part: Part,
+      stockItem: StockItem | null
+    ): InventreeService => {
+      const mockApi = vi.fn()
+      const service = new InventreeService(mockApi)
+      vi.spyOn(service, 'scanBarcodeWithStock').mockResolvedValue({ part, stockItem })
+      return service
+    }
+
+    it('falls back to quantity 1 for a stock_item scan when the stock item quantity is zero', async () => {
+      await fc.assert(
+        fc.asyncProperty(
+          barcodeArb,
+          partArb.chain(part =>
+            stockItemZeroQtyArb(part.pk).map(stockItem => ({ part, stockItem }))
+          ),
+          async (barcode, { part, stockItem }) => {
+            const mockService = createStockAwareService(part, stockItem)
+            const testCart = useCheckoutCart(mockService)
+
+            // Scan with the Add_Full_Quantity toggle enabled.
+            const result = testCart.addOrIncrementItem(barcode, { addFullQuantity: true })
+            expect(result).not.toBeNull()
+            const itemId = result!.id
+
+            // Wait for the fire-and-forget lookup to resolve and apply full qty.
+            await new Promise(resolve => setTimeout(resolve, 10))
+
+            const cartItem = testCart.cartItems.value.find(i => i.id === itemId)
+            expect(cartItem).toBeDefined()
+            expect(cartItem!.status).toBe('loaded')
+            expect(cartItem!.scanType).toBe('stock_item')
+
+            // Requirement 3.7: zero full quantity → fallback quantity of 1.
+            expect(cartItem!.quantity).toBe(1)
+          }
+        ),
+        { numRuns: 100 }
+      )
+    })
+
+    it('falls back to quantity 1 for a part scan when the part in_stock total is zero or undefined', async () => {
+      await fc.assert(
+        fc.asyncProperty(
+          barcodeArb,
+          partZeroStockArb,
+          async (barcode, part) => {
+            const mockService = createStockAwareService(part, null)
+            const testCart = useCheckoutCart(mockService)
+
+            // Scan with the Add_Full_Quantity toggle enabled.
+            const result = testCart.addOrIncrementItem(barcode, { addFullQuantity: true })
+            expect(result).not.toBeNull()
+            const itemId = result!.id
+
+            // Wait for the fire-and-forget lookup to resolve and apply full qty.
+            await new Promise(resolve => setTimeout(resolve, 10))
+
+            const cartItem = testCart.cartItems.value.find(i => i.id === itemId)
+            expect(cartItem).toBeDefined()
+            expect(cartItem!.status).toBe('loaded')
+            expect(cartItem!.scanType).toBe('part')
+
+            // Requirement 3.7: zero/undefined full quantity → fallback quantity of 1.
+            expect(cartItem!.quantity).toBe(1)
+          }
+        ),
+        { numRuns: 100 }
+      )
+    })
+  })
+
+  // Feature: stock-aware-checkout, Property 7: Increment-by-one preserved when toggle off
+  describe('Stock-aware checkout Property 7: Increment-by-one preserved when toggle off', () => {
+    /**
+     * **Validates: Requirements 3.3, 6.2**
+     *
+     * For any sequence of scans of the same barcode with addFullQuantity
+     * disabled, the resulting single CartItem.quantity equals the number of
+     * times it was scanned — regardless of scan type (stock_item or part) and
+     * regardless of whether the toggle is left unspecified or passed as
+     * `{ addFullQuantity: false }`.
+     */
+
+    // Arbitrary for a random Part with a positive in_stock total.
+    const partArb = fc.record({
+      pk: fc.integer({ min: 1, max: 100000 }),
+      name: fc.string({ minLength: 1, maxLength: 40 }),
+      description: fc.string({ maxLength: 80 }),
+      IPN: fc.string({ maxLength: 20 }),
+      revision: fc.string({ maxLength: 10 }),
+      category: fc.option(fc.integer({ min: 1, max: 1000 }), { nil: null }),
+      active: fc.boolean(),
+      virtual: fc.boolean(),
+      component: fc.boolean(),
+      assembly: fc.boolean(),
+      purchaseable: fc.boolean(),
+      salable: fc.boolean(),
+      trackable: fc.boolean(),
+      in_stock: fc.integer({ min: 1, max: 10000 }),
+      link: fc.string({ maxLength: 30 }),
+      image: fc.option(fc.string({ maxLength: 30 }), { nil: null }),
+      thumbnail: fc.option(fc.string({ maxLength: 30 }), { nil: null })
+    }) as fc.Arbitrary<Part>
+
+    // Arbitrary for a random StockItem with a positive quantity.
+    const stockItemArb = (partPk: number): fc.Arbitrary<StockItem> => fc.record({
+      pk: fc.integer({ min: 1, max: 100000 }),
+      part: fc.constant(partPk),
+      quantity: fc.integer({ min: 1, max: 10000 }),
+      location: fc.option(fc.integer({ min: 1, max: 1000 }), { nil: null }),
+      serial: fc.option(fc.string({ maxLength: 20 }), { nil: null }),
+      batch: fc.option(fc.string({ maxLength: 20 }), { nil: null }),
+      barcode_hash: fc.string({ maxLength: 30 }),
+      notes: fc.string({ maxLength: 40 })
+    }) as fc.Arbitrary<StockItem>
+
+    /**
+     * Builds a mock InventreeService whose per-instance `scanBarcodeWithStock`
+     * returns the given result, overriding the default prototype spy installed
+     * in `beforeEach`.
+     */
+    const createStockAwareService = (
+      part: Part,
+      stockItem: StockItem | null
+    ): InventreeService => {
+      const mockApi = vi.fn()
+      const service = new InventreeService(mockApi)
+      vi.spyOn(service, 'scanBarcodeWithStock').mockResolvedValue({ part, stockItem })
+      return service
+    }
+
+    it('keeps quantity equal to the scan count for a stock_item scan when the toggle is off', async () => {
+      await fc.assert(
+        fc.asyncProperty(
+          barcodeArb,
+          partArb.chain(part =>
+            stockItemArb(part.pk).map(stockItem => ({ part, stockItem }))
+          ),
+          // Number of times the same barcode is scanned.
+          fc.integer({ min: 1, max: 20 }),
+          // Whether to leave options unspecified or pass { addFullQuantity: false }.
+          fc.boolean(),
+          async (barcode, { part, stockItem }, scanCount, passExplicitFalse) => {
+            const mockService = createStockAwareService(part, stockItem)
+            const testCart = useCheckoutCart(mockService)
+
+            // Scan the same barcode N times with the toggle OFF.
+            let result: CartItem | null = null
+            for (let i = 0; i < scanCount; i++) {
+              result = passExplicitFalse
+                ? testCart.addOrIncrementItem(barcode, { addFullQuantity: false })
+                : testCart.addOrIncrementItem(barcode)
+            }
+            expect(result).not.toBeNull()
+            const itemId = result!.id
+
+            // Let the fire-and-forget lookup resolve to a loaded item.
+            await new Promise(resolve => setTimeout(resolve, 10))
+
+            // Exactly one cart item exists for the repeated barcode.
+            expect(testCart.cartItems.value.length).toBe(1)
+
+            const cartItem = testCart.cartItems.value.find(i => i.id === itemId)
+            expect(cartItem).toBeDefined()
+            expect(cartItem!.status).toBe('loaded')
+            expect(cartItem!.scanType).toBe('stock_item')
+
+            // Requirements 3.3 / 6.2: increment-by-one preserved with the toggle
+            // off — quantity equals the number of scans, not the full quantity.
+            expect(cartItem!.quantity).toBe(scanCount)
+          }
+        ),
+        { numRuns: 100 }
+      )
+    })
+
+    it('keeps quantity equal to the scan count for a part scan when the toggle is off', async () => {
+      await fc.assert(
+        fc.asyncProperty(
+          barcodeArb,
+          partArb,
+          // Number of times the same barcode is scanned.
+          fc.integer({ min: 1, max: 20 }),
+          // Whether to leave options unspecified or pass { addFullQuantity: false }.
+          fc.boolean(),
+          async (barcode, part, scanCount, passExplicitFalse) => {
+            const mockService = createStockAwareService(part, null)
+            const testCart = useCheckoutCart(mockService)
+
+            // Scan the same barcode N times with the toggle OFF.
+            let result: CartItem | null = null
+            for (let i = 0; i < scanCount; i++) {
+              result = passExplicitFalse
+                ? testCart.addOrIncrementItem(barcode, { addFullQuantity: false })
+                : testCart.addOrIncrementItem(barcode)
+            }
+            expect(result).not.toBeNull()
+            const itemId = result!.id
+
+            // Let the fire-and-forget lookup resolve to a loaded item.
+            await new Promise(resolve => setTimeout(resolve, 10))
+
+            // Exactly one cart item exists for the repeated barcode.
+            expect(testCart.cartItems.value.length).toBe(1)
+
+            const cartItem = testCart.cartItems.value.find(i => i.id === itemId)
+            expect(cartItem).toBeDefined()
+            expect(cartItem!.status).toBe('loaded')
+            expect(cartItem!.scanType).toBe('part')
+
+            // Requirements 3.3 / 6.2: increment-by-one preserved with the toggle
+            // off — quantity equals the number of scans, not the full quantity.
+            expect(cartItem!.quantity).toBe(scanCount)
+          }
+        ),
+        { numRuns: 100 }
+      )
+    })
+  })
+
+  // Feature: stock-aware-checkout, Property 8: Stock-warning source matches scan type
+  describe('Stock-aware checkout Property 8: Stock-warning source matches scan type', () => {
+    /**
+     * **Validates: Requirements 5.1, 5.2**
+     *
+     * For any CartItem, it is flagged as a stock warning if and only if:
+     *   (scanType === 'stock_item' and quantity > stockItem.quantity) or
+     *   (scanType === 'part'       and quantity > part.in_stock).
+     *
+     * The test generates a random part (in_stock) and stock item (quantity),
+     * scans the barcode (stock-aware or part-only), waits for the lookup to
+     * resolve, then sets a random requested quantity via `updateQuantity` and
+     * asserts `itemHasStockWarning` matches the expected boolean computed from
+     * the scan-type-aware availability source.
+     */
+
+    // Arbitrary for a random Part with a finite in_stock total (including 0).
+    const partArb = fc.record({
+      pk: fc.integer({ min: 1, max: 100000 }),
+      name: fc.string({ minLength: 1, maxLength: 40 }),
+      description: fc.string({ maxLength: 80 }),
+      IPN: fc.string({ maxLength: 20 }),
+      revision: fc.string({ maxLength: 10 }),
+      category: fc.option(fc.integer({ min: 1, max: 1000 }), { nil: null }),
+      active: fc.boolean(),
+      virtual: fc.boolean(),
+      component: fc.boolean(),
+      assembly: fc.boolean(),
+      purchaseable: fc.boolean(),
+      salable: fc.boolean(),
+      trackable: fc.boolean(),
+      in_stock: fc.integer({ min: 0, max: 10000 }),
+      link: fc.string({ maxLength: 30 }),
+      image: fc.option(fc.string({ maxLength: 30 }), { nil: null }),
+      thumbnail: fc.option(fc.string({ maxLength: 30 }), { nil: null })
+    }) as fc.Arbitrary<Part>
+
+    // Arbitrary for a random StockItem with a finite quantity (including 0).
+    const stockItemArb = (partPk: number): fc.Arbitrary<StockItem> => fc.record({
+      pk: fc.integer({ min: 1, max: 100000 }),
+      part: fc.constant(partPk),
+      quantity: fc.integer({ min: 0, max: 10000 }),
+      location: fc.option(fc.integer({ min: 1, max: 1000 }), { nil: null }),
+      serial: fc.option(fc.string({ maxLength: 20 }), { nil: null }),
+      batch: fc.option(fc.string({ maxLength: 20 }), { nil: null }),
+      barcode_hash: fc.string({ maxLength: 30 }),
+      notes: fc.string({ maxLength: 40 })
+    }) as fc.Arbitrary<StockItem>
+
+    /**
+     * Builds a mock InventreeService whose per-instance `scanBarcodeWithStock`
+     * returns the given `{ part, stockItem }` result, overriding the default
+     * prototype spy installed in `beforeEach`.
+     */
+    const createStockAwareService = (
+      part: Part,
+      stockItem: StockItem | null
+    ): InventreeService => {
+      const mockApi = vi.fn()
+      const service = new InventreeService(mockApi)
+      vi.spyOn(service, 'scanBarcodeWithStock').mockResolvedValue({ part, stockItem })
+      return service
+    }
+
+    it('warns iff requested quantity exceeds the stock item quantity for a stock_item scan', async () => {
+      await fc.assert(
+        fc.asyncProperty(
+          barcodeArb,
+          // Generate the part + stock item, then a requested quantity that spans
+          // both below and above the stock item's quantity to exercise both
+          // sides of the iff.
+          partArb.chain(part =>
+            stockItemArb(part.pk).chain(stockItem =>
+              fc.integer({ min: 1, max: Math.max(2, stockItem.quantity * 2 + 2) })
+                .map(quantity => ({ part, stockItem, quantity }))
+            )
+          ),
+          async (barcode, { part, stockItem, quantity }) => {
+            const mockService = createStockAwareService(part, stockItem)
+            const testCart = useCheckoutCart(mockService)
+
+            const result = testCart.addOrIncrementItem(barcode)
+            expect(result).not.toBeNull()
+            const itemId = result!.id
+
+            // Wait for the fire-and-forget lookup to resolve to a loaded item.
+            await new Promise(resolve => setTimeout(resolve, 10))
+
+            const cartItem = testCart.cartItems.value.find(i => i.id === itemId)
+            expect(cartItem).toBeDefined()
+            expect(cartItem!.status).toBe('loaded')
+            expect(cartItem!.scanType).toBe('stock_item')
+
+            // Set the random requested quantity on the loaded item.
+            expect(testCart.updateQuantity(itemId, quantity)).toBe(true)
+
+            // Requirement 5.1: warning source is the scanned stock item's quantity.
+            const expectedWarning = quantity > stockItem.quantity
+            expect(testCart.itemHasStockWarning(cartItem!)).toBe(expectedWarning)
+            expect(testCart.hasStockWarnings.value).toBe(expectedWarning)
+          }
+        ),
+        { numRuns: 100 }
+      )
+    })
+
+    it('warns iff requested quantity exceeds the part in_stock total for a part scan', async () => {
+      await fc.assert(
+        fc.asyncProperty(
+          barcodeArb,
+          // Generate the part, then a requested quantity that spans both below
+          // and above the part's in_stock total to exercise both sides of the iff.
+          partArb.chain(part =>
+            fc.integer({ min: 1, max: Math.max(2, part.in_stock * 2 + 2) })
+              .map(quantity => ({ part, quantity }))
+          ),
+          async (barcode, { part, quantity }) => {
+            const mockService = createStockAwareService(part, null)
+            const testCart = useCheckoutCart(mockService)
+
+            const result = testCart.addOrIncrementItem(barcode)
+            expect(result).not.toBeNull()
+            const itemId = result!.id
+
+            // Wait for the fire-and-forget lookup to resolve to a loaded item.
+            await new Promise(resolve => setTimeout(resolve, 10))
+
+            const cartItem = testCart.cartItems.value.find(i => i.id === itemId)
+            expect(cartItem).toBeDefined()
+            expect(cartItem!.status).toBe('loaded')
+            expect(cartItem!.scanType).toBe('part')
+
+            // Set the random requested quantity on the loaded item.
+            expect(testCart.updateQuantity(itemId, quantity)).toBe(true)
+
+            // Requirement 5.2: warning source is the part's in_stock total.
+            const expectedWarning = quantity > part.in_stock
+            expect(testCart.itemHasStockWarning(cartItem!)).toBe(expectedWarning)
+            expect(testCart.hasStockWarnings.value).toBe(expectedWarning)
+          }
+        ),
+        { numRuns: 100 }
+      )
+    })
+  })
+
+  // Feature: stock-aware-checkout, Property 9: Stock-item-targeted removal
+  describe('Stock-aware checkout Property 9: Stock-item-targeted removal', () => {
+    /**
+     * **Validates: Requirements 4.1**
+     *
+     * For any checkout of a stock_item CartItem, `removeStock` is called exactly
+     * once with the scanned stockItem.pk and the item's quantity, and
+     * `getStockItems` is NOT used to distribute that item's removal.
+     *
+     * The test builds a stock-aware service whose `scanBarcodeWithStock` returns
+     * a `{ part, stockItem }` result with a stock item quantity large enough to
+     * cover the requested quantity (so no stock warning blocks checkout). It
+     * spies on `removeStock` (tracking pk + quantity) and `getStockItems`
+     * (tracking whether it was called). After the lookup resolves it sets a
+     * requested quantity ≤ stockItem.quantity, runs checkout, then asserts the
+     * single targeted removal and the absence of any distribution lookup.
+     */
+
+    // Arbitrary for a random Part with a positive in_stock total.
+    const partArb = fc.record({
+      pk: fc.integer({ min: 1, max: 100000 }),
+      name: fc.string({ minLength: 1, maxLength: 40 }),
+      description: fc.string({ maxLength: 80 }),
+      IPN: fc.string({ maxLength: 20 }),
+      revision: fc.string({ maxLength: 10 }),
+      category: fc.option(fc.integer({ min: 1, max: 1000 }), { nil: null }),
+      active: fc.boolean(),
+      virtual: fc.boolean(),
+      component: fc.boolean(),
+      assembly: fc.boolean(),
+      purchaseable: fc.boolean(),
+      salable: fc.boolean(),
+      trackable: fc.boolean(),
+      in_stock: fc.integer({ min: 1, max: 10000 }),
+      link: fc.string({ maxLength: 30 }),
+      image: fc.option(fc.string({ maxLength: 30 }), { nil: null }),
+      thumbnail: fc.option(fc.string({ maxLength: 30 }), { nil: null })
+    }) as fc.Arbitrary<Part>
+
+    // Arbitrary for a random StockItem with a strictly positive quantity q > 0.
+    const stockItemWithQtyArb = (partPk: number): fc.Arbitrary<StockItem> => fc.record({
+      pk: fc.integer({ min: 1, max: 100000 }),
+      part: fc.constant(partPk),
+      quantity: fc.integer({ min: 1, max: 10000 }),
+      location: fc.option(fc.integer({ min: 1, max: 1000 }), { nil: null }),
+      serial: fc.option(fc.string({ maxLength: 20 }), { nil: null }),
+      batch: fc.option(fc.string({ maxLength: 20 }), { nil: null }),
+      barcode_hash: fc.string({ maxLength: 30 }),
+      notes: fc.string({ maxLength: 40 })
+    }) as fc.Arbitrary<StockItem>
+
+    /**
+     * Builds a mock InventreeService whose per-instance `scanBarcodeWithStock`
+     * returns the given stock-item result, with spies tracking `removeStock`
+     * calls (pk + quantity) and whether `getStockItems` was invoked.
+     */
+    const createStockAwareService = (part: Part, stockItem: StockItem) => {
+      const mockApi = vi.fn()
+      const service = new InventreeService(mockApi)
+      vi.spyOn(service, 'scanBarcodeWithStock').mockResolvedValue({ part, stockItem })
+      const removeStockSpy = vi.spyOn(service, 'removeStock').mockResolvedValue(undefined)
+      const getStockItemsSpy = vi.spyOn(service, 'getStockItems').mockResolvedValue([])
+      return { service, removeStockSpy, getStockItemsSpy }
+    }
+
+    it('removes only the scanned stock item exactly once and never distributes via getStockItems', async () => {
+      await fc.assert(
+        fc.asyncProperty(
+          barcodeArb,
+          // Generate the part + stock item, then a requested quantity in
+          // [1, stockItem.quantity] so it is fully covered and no stock warning
+          // blocks checkout.
+          partArb.chain(part =>
+            stockItemWithQtyArb(part.pk).chain(stockItem =>
+              fc.integer({ min: 1, max: stockItem.quantity })
+                .map(quantity => ({ part, stockItem, quantity }))
+            )
+          ),
+          async (barcode, { part, stockItem, quantity }) => {
+            const { service, removeStockSpy, getStockItemsSpy }
+              = createStockAwareService(part, stockItem)
+            const testCart = useCheckoutCart(service)
+
+            const result = testCart.addOrIncrementItem(barcode)
+            expect(result).not.toBeNull()
+            const itemId = result!.id
+
+            // Wait for the fire-and-forget lookup to resolve to a loaded item.
+            await new Promise(resolve => setTimeout(resolve, 10))
+
+            const cartItem = testCart.cartItems.value.find(i => i.id === itemId)
+            expect(cartItem).toBeDefined()
+            expect(cartItem!.status).toBe('loaded')
+            expect(cartItem!.scanType).toBe('stock_item')
+
+            // Set the requested quantity (≤ stock item quantity → no warning).
+            expect(testCart.updateQuantity(itemId, quantity)).toBe(true)
+            expect(testCart.hasStockWarnings.value).toBe(false)
+
+            // Run checkout.
+            const checkoutResult = await testCart.checkout()
+
+            // Checkout succeeds for the single stock_item line.
+            expect(checkoutResult.success).toBe(true)
+            expect(checkoutResult.processedItems).toBe(1)
+
+            // Requirement 4.1: removeStock called exactly once, targeting the
+            // scanned stock item's pk with the item's requested quantity.
+            expect(removeStockSpy).toHaveBeenCalledTimes(1)
+            expect(removeStockSpy).toHaveBeenCalledWith(
+              stockItem.pk,
+              expect.objectContaining({ quantity })
+            )
+
+            // Requirement 4.1: no distribution lookup for the stock_item removal.
+            expect(getStockItemsSpy).not.toHaveBeenCalled()
+          }
+        ),
+        { numRuns: 100 }
+      )
+    })
+  })
+
+  // Feature: stock-aware-checkout, Property 10: Part removal distribution preserved
+  describe('Stock-aware checkout Property 10: Part removal distribution preserved', () => {
+    /**
+     * **Validates: Requirements 4.2**
+     *
+     * For any checkout of a part CartItem, the removal is distributed across the
+     * part's stock items via `getStockItems`, matching the pre-feature behavior.
+     *
+     * The test builds a service whose `scanBarcodeWithStock` returns
+     * `{ part, stockItem: null }` (a part-level scan). It spies on
+     * `getStockItems` to return one or more stock items whose combined quantity
+     * covers the requested amount, and on `removeStock`. After the lookup
+     * resolves to a `part` scan it sets a requested quantity within the total
+     * available (≤ part.in_stock, so no stock warning blocks checkout), runs
+     * checkout, then asserts the distribution path is used: `getStockItems` is
+     * called with `part.pk`, `removeStock` draws down exactly the requested
+     * quantity across the returned stock items, and checkout succeeds.
+     */
+
+    // Arbitrary for a random Part; `in_stock` is set from the stock item total
+    // below so the availability gate matches the distributable quantity.
+    const partArb = fc.record({
+      pk: fc.integer({ min: 1, max: 100000 }),
+      name: fc.string({ minLength: 1, maxLength: 40 }),
+      description: fc.string({ maxLength: 80 }),
+      IPN: fc.string({ maxLength: 20 }),
+      revision: fc.string({ maxLength: 10 }),
+      category: fc.option(fc.integer({ min: 1, max: 1000 }), { nil: null }),
+      active: fc.boolean(),
+      virtual: fc.boolean(),
+      component: fc.boolean(),
+      assembly: fc.boolean(),
+      purchaseable: fc.boolean(),
+      salable: fc.boolean(),
+      trackable: fc.boolean(),
+      in_stock: fc.constant(0), // overwritten with the stock item total
+      link: fc.string({ maxLength: 30 }),
+      image: fc.option(fc.string({ maxLength: 30 }), { nil: null }),
+      thumbnail: fc.option(fc.string({ maxLength: 30 }), { nil: null })
+    }) as fc.Arbitrary<Part>
+
+    /**
+     * Builds a mock InventreeService for a part-level scan: `scanBarcodeWithStock`
+     * returns `{ part, stockItem: null }`, `getStockItems` returns the supplied
+     * distribution stock items, and `removeStock` is a resolving spy.
+     */
+    const createPartScanService = (part: Part, stockItems: StockItem[]) => {
+      const mockApi = vi.fn()
+      const service = new InventreeService(mockApi)
+      vi.spyOn(service, 'scanBarcodeWithStock').mockResolvedValue({ part, stockItem: null })
+      const getStockItemsSpy = vi.spyOn(service, 'getStockItems').mockResolvedValue(stockItems)
+      const removeStockSpy = vi.spyOn(service, 'removeStock').mockResolvedValue(undefined)
+      return { service, getStockItemsSpy, removeStockSpy }
+    }
+
+    it('distributes the removal across the part stock items via getStockItems', async () => {
+      await fc.assert(
+        fc.asyncProperty(
+          barcodeArb,
+          // Generate 1..5 stock item quantities (each > 0), then a requested
+          // quantity in [1, total] so the removal is fully distributable and the
+          // part-level warning (against in_stock === total) never blocks checkout.
+          partArb.chain(part =>
+            fc.array(fc.integer({ min: 1, max: 1000 }), { minLength: 1, maxLength: 5 })
+              .chain((quantities) => {
+                const total = quantities.reduce((sum, q) => sum + q, 0)
+                const stockItems: StockItem[] = quantities.map((quantity, index) => ({
+                  pk: index + 1, // unique pk per stock item in the list
+                  part: part.pk,
+                  quantity,
+                  location: null,
+                  serial: null,
+                  batch: null,
+                  barcode_hash: `hash-${index}`,
+                  notes: ''
+                }))
+                return fc.integer({ min: 1, max: total }).map(quantity => ({
+                  part: { ...part, in_stock: total },
+                  stockItems,
+                  quantity
+                }))
+              })
+          ),
+          async (barcode, { part, stockItems, quantity }) => {
+            const { service, getStockItemsSpy, removeStockSpy }
+              = createPartScanService(part, stockItems)
+            const testCart = useCheckoutCart(service)
+
+            const result = testCart.addOrIncrementItem(barcode)
+            expect(result).not.toBeNull()
+            const itemId = result!.id
+
+            // Wait for the fire-and-forget lookup to resolve to a loaded item.
+            await new Promise(resolve => setTimeout(resolve, 10))
+
+            const cartItem = testCart.cartItems.value.find(i => i.id === itemId)
+            expect(cartItem).toBeDefined()
+            expect(cartItem!.status).toBe('loaded')
+            // A part-only barcode classifies as a part scan (no stock item).
+            expect(cartItem!.scanType).toBe('part')
+
+            // Set the requested quantity (≤ in_stock total → no warning).
+            expect(testCart.updateQuantity(itemId, quantity)).toBe(true)
+            expect(testCart.hasStockWarnings.value).toBe(false)
+
+            // Run checkout.
+            const checkoutResult = await testCart.checkout()
+
+            // Checkout succeeds for the single part line.
+            expect(checkoutResult.success).toBe(true)
+            expect(checkoutResult.processedItems).toBe(1)
+
+            // Requirement 4.2: the distribution path is used — getStockItems is
+            // queried for the part's stock items.
+            expect(getStockItemsSpy).toHaveBeenCalledWith(part.pk)
+
+            // Requirement 4.2: the removal is distributed via removeStock across
+            // the returned stock items. Every call targets one of those stock
+            // items, and the drawn-down total equals the requested quantity.
+            expect(removeStockSpy).toHaveBeenCalled()
+            const stockItemPks = new Set(stockItems.map(si => si.pk))
+            let distributedTotal = 0
+            for (const call of removeStockSpy.mock.calls) {
+              const [pk, opts] = call as [number, { quantity: number }]
+              expect(stockItemPks.has(pk)).toBe(true)
+              distributedTotal += opts.quantity
+            }
+            expect(distributedTotal).toBe(quantity)
           }
         ),
         { numRuns: 100 }

@@ -40,6 +40,13 @@ const barcodeInputRef = ref<HTMLInputElement | null>(null)
 // Optional checkout reason recorded against each stock removal in InvenTree
 const checkoutReason = ref('')
 
+// Persisted "Add full quantity" toggle. When enabled, a scan sets the cart
+// quantity to the full available amount for the scanned item instead of
+// incrementing by one.
+// @see Requirements 3.1, 3.2, 6.1
+const ADD_FULL_QUANTITY_KEY = 'checkout_add_full_quantity'
+const addFullQuantity = ref(false)
+
 // Receipt opt-in + generated receipt state
 const makeReceipt = ref(false)
 const receiptLines = ref<ReceiptLine[]>([])
@@ -115,7 +122,7 @@ const dismissReceipt = () => {
 const handleScan = () => {
   if (!barcodeInput.value.trim()) return
 
-  addOrIncrementItem(barcodeInput.value)
+  addOrIncrementItem(barcodeInput.value, { addFullQuantity: addFullQuantity.value })
   barcodeInput.value = ''
 
   // Maintain focus on input for next scan
@@ -252,6 +259,26 @@ const handleRemoveItem = (itemId: string) => {
 // @see Requirements 1.2, 8.4
 onMounted(() => {
   focusInput()
+
+  // Restore the persisted "Add full quantity" toggle. Guard against
+  // localStorage being unavailable or holding a corrupt value; default to
+  // disabled in that case.
+  // @see Requirements 3.2, 6.1
+  try {
+    addFullQuantity.value = localStorage.getItem(ADD_FULL_QUANTITY_KEY) === 'true'
+  } catch {
+    addFullQuantity.value = false
+  }
+})
+
+// Persist the "Add full quantity" toggle whenever it changes.
+// @see Requirement 3.2
+watch(addFullQuantity, (enabled) => {
+  try {
+    localStorage.setItem(ADD_FULL_QUANTITY_KEY, enabled ? 'true' : 'false')
+  } catch {
+    // localStorage unavailable — persistence is best-effort, ignore.
+  }
 })
 
 // Keyboard shortcut for void (Escape key)
@@ -341,6 +368,12 @@ onMounted(() => {
             />
           </template>
         </UInput>
+
+        <UCheckbox
+          v-model="addFullQuantity"
+          label="Add full quantity"
+          description="Scanning sets the quantity to the full available amount instead of adding one."
+        />
       </div>
 
       <USeparator class="mb-4" />
@@ -420,11 +453,42 @@ onMounted(() => {
                 class="w-12 h-12 text-gray-400"
               />
               <div class="flex-1">
-                <p class="font-semibold">
-                  {{ item.part.name }}
-                </p>
+                <div class="flex items-center gap-2">
+                  <p class="font-semibold">
+                    {{ item.part.name }}
+                  </p>
+                  <!-- Scan-type indicator distinguishing a stock-item scan from a part scan -->
+                  <!-- @see Requirement 2.5 -->
+                  <UBadge
+                    v-if="item.scanType === 'stock_item'"
+                    color="primary"
+                    variant="subtle"
+                    size="sm"
+                    icon="i-lucide-box"
+                  >
+                    Stock Item
+                  </UBadge>
+                  <UBadge
+                    v-else
+                    color="neutral"
+                    variant="subtle"
+                    size="sm"
+                    icon="i-lucide-package"
+                  >
+                    Part
+                  </UBadge>
+                </div>
+                <!-- Part-wide stock total, always shown. @see Requirement 2.1 -->
                 <p class="text-sm text-gray-500">
                   Stock: {{ item.part.in_stock }} | Barcode: {{ item.barcode }}
+                </p>
+                <!-- Stock-item quantity + batch label, only for stock-item scans. -->
+                <!-- @see Requirements 2.2, 2.3 -->
+                <p
+                  v-if="item.scanType === 'stock_item' && item.stockItem"
+                  class="text-sm text-gray-500"
+                >
+                  This batch: {{ item.stockItem.quantity }}<span v-if="item.stockItem.batch"> | Batch: {{ item.stockItem.batch }}</span>
                 </p>
               </div>
             </template>

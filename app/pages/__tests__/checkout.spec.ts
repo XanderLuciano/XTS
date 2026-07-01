@@ -142,3 +142,82 @@ describe('Checkout Page Keyboard Shortcuts', () => {
     expect(checkoutPageContent).toContain('window.addEventListener(\'keydown\'')
   })
 })
+
+describe('Checkout Page Stock-Aware Display', () => {
+  let checkoutPageContent: string
+
+  beforeEach(() => {
+    const checkoutPath = resolve(__dirname, '../checkout.vue')
+    checkoutPageContent = readFileSync(checkoutPath, 'utf-8')
+  })
+
+  /**
+   * Test: Loaded item always shows the part-wide stock total
+   * **Validates: Requirement 2.1**
+   *
+   * WHEN a Cart_Item is loaded, THE Kiosk_Page SHALL display the Part_Stock_Total
+   * for the resolved Part.
+   */
+  it('should always render the part stock total for a loaded item', () => {
+    // Part-wide total is bound to part.in_stock and rendered unconditionally
+    // within the loaded template branch.
+    expect(checkoutPageContent).toContain('Stock: {{ item.part.in_stock }}')
+  })
+
+  /**
+   * Test: Stock-item items additionally show the stock item quantity ("This batch:")
+   * **Validates: Requirement 2.2**
+   *
+   * WHEN a Cart_Item has Scan_Type `stock_item`, THE Kiosk_Page SHALL additionally
+   * display the Stock_Item_Quantity for the scanned Stock_Item.
+   */
+  it('should render the stock item quantity line for stock_item scans', () => {
+    // The dual-total "This batch:" line is bound to the stock item quantity.
+    expect(checkoutPageContent).toContain('This batch: {{ item.stockItem.quantity }}')
+  })
+
+  /**
+   * Test: Stock-item items show the batch label when a batch value is present
+   * **Validates: Requirement 2.3**
+   *
+   * WHEN a Cart_Item has Scan_Type `stock_item` AND the Stock_Item has a batch value,
+   * THE Kiosk_Page SHALL display the batch identifier alongside the Stock_Item_Quantity.
+   */
+  it('should render the batch label guarded by a batch value', () => {
+    // Batch label is conditional on stockItem.batch and bound to its value.
+    expect(checkoutPageContent).toContain('v-if="item.stockItem.batch"')
+    expect(checkoutPageContent).toContain('Batch: {{ item.stockItem.batch }}')
+  })
+
+  /**
+   * Test: The batch / "This batch:" line is guarded by the stock_item conditional
+   * **Validates: Requirements 2.2, 2.3, 2.4**
+   *
+   * WHEN a Cart_Item has Scan_Type `part`, THE Kiosk_Page SHALL display only the
+   * Part_Stock_Total and SHALL NOT display a Stock_Item_Quantity. The batch/quantity
+   * line must therefore be conditional on scanType === 'stock_item' so a part item
+   * never renders it.
+   */
+  it('should guard the batch line behind the stock_item scan-type conditional', () => {
+    // The "This batch:" line is only rendered when scanType === 'stock_item'
+    // and a stock item is present, ensuring part scans do not render it.
+    expect(checkoutPageContent).toContain(
+      'v-if="item.scanType === \'stock_item\' && item.stockItem"'
+    )
+  })
+
+  /**
+   * Test: A scan-type badge distinguishes stock-item scans from part scans
+   * **Validates: Requirement 2.5**
+   *
+   * WHEN a Cart_Item has Scan_Type `stock_item`, THE Kiosk_Page SHALL provide a
+   * visual indicator distinguishing it from a part-level scan.
+   */
+  it('should render a scan-type badge distinguishing stock item from part', () => {
+    // A UBadge is shown for the stock-item case and a distinct one for the part case.
+    expect(checkoutPageContent).toContain('UBadge')
+    expect(checkoutPageContent).toContain('v-if="item.scanType === \'stock_item\'"')
+    expect(checkoutPageContent).toContain('Stock Item')
+    expect(checkoutPageContent).toContain('Part')
+  })
+})

@@ -1,5 +1,5 @@
 import { ref, computed, type Ref, type ComputedRef } from 'vue'
-import type { Part } from '~/types/inventree'
+import type { Part, StockItem } from '~/types/inventree'
 import type { InventreeService } from '~/services/inventree.service'
 import type { ReceiptLine } from '~/utils/checkoutReceipt'
 
@@ -7,6 +7,12 @@ import type { ReceiptLine } from '~/utils/checkoutReceipt'
  * Cart item status representing the lifecycle of a scanned item
  */
 export type CartItemStatus = 'loading' | 'loaded' | 'error'
+
+/**
+ * Classification of a scanned barcode: resolved only to a Part, or to a
+ * specific Stock_Item (a batch/receipt line of that part).
+ */
+export type ScanType = 'part' | 'stock_item'
 
 /**
  * Represents an item in the checkout cart
@@ -23,12 +29,22 @@ export interface CartItem {
   status: CartItemStatus
   /** Loaded part data from InvenTree (optional, populated after lookup) */
   part?: Part
+  /** Resolved stock item, populated when scanType === 'stock_item' */
+  stockItem?: StockItem
+  /** What the scanned barcode resolved to; defaults to 'part' */
+  scanType: ScanType
   /** Error message if lookup failed */
   errorMessage?: string
   /** Timestamp when item was first added */
   addedAt: number
   /** Timestamp of last quantity change or modification */
   lastModifiedAt: number
+  /**
+   * Internal: set when the item is created under the Add_Full_Quantity toggle
+   * so the async lookup knows to set the quantity to the full available amount
+   * once the part/stock item resolves.
+   */
+  pendingFullQuantity?: boolean
 }
 
 /**
@@ -67,7 +83,7 @@ export interface UseCheckoutCart {
   searchMode: Ref<'barcode' | 'part'>
 
   // Actions
-  addOrIncrementItem: (barcode: string) => CartItem | null
+  addOrIncrementItem: (barcode: string, options?: { addFullQuantity?: boolean }) => CartItem | null
   updateQuantity: (itemId: string, quantity: number) => boolean
   removeItem: (itemId: string) => CartItem | null
   voidLastItem: () => CartItem | null
@@ -80,6 +96,10 @@ export interface UseCheckoutCart {
   isEmpty: ComputedRef<boolean>
   totalItems: ComputedRef<number>
   hasStockWarnings: ComputedRef<boolean>
+
+  // Per-item helpers
+  /** Whether a single cart item requests more than its scan-type-aware availability. */
+  itemHasStockWarning: (item: CartItem) => boolean
 
   // Internal state accessors (for testing)
   getBarcodeIndex: () => Map<string, string>
@@ -132,13 +152,99 @@ export const useCheckoutCart = (inventreeService?: InventreeService): UseCheckou
   }
 
   /**
-   * Looks up part details for a cart item from InvenTree
-   * Uses barcode scanning API by default, falls back to part search if in 'part' mode
-   * Updates the cart item with part data on success, or sets error state on failure
-   * This is a fire-and-forget async operation
+   * Resolves the full available quantity for a cart item based on its scan type.
+   *
+   * - `stock_item` scans use the resolved Stock_Item's `quantity`.
+   * - `part` scans use the resolved Part's `in_stock` total.
+   *
+   * When the underlying source value is missing, zero, or non-finite, this
+   * falls back to `1` so a scan under the Add_Full_Quantity toggle still adds
+   * a usable quantity.
+   *
+   * @param item - The cart item to resolve the full quantity for
+   * @returns A positive quantity, or `1` as a fallback
+   * @see Requirements 3.4, 3.5, 3.7
+   */
+  const fullQuantityFor = (item: CartItem): number => {
+    const source = item.scanType === 'stock_item'
+      ? item.stockItem?.quantity
+      : item.part?.in_stock
+
+    if (typeof source !== 'number' || !Number.isFinite(source) || source <= 0) {
+      return 1
+    }
+
+    return source
+  }
+
+  /**
+   * Resolves the true available quantity for a cart item based on its scan
+   * type, used for stock-warning evaluation.
+   *
+   * Unlike {@link fullQuantityFor}, this does NOT fall back to `1` when the
+   * source value is missing. It returns `undefined` when the relevant source
+   * (stock item for `stock_item`, part for `part`) has not resolved yet, so a
+   * not-yet-loaded item never spuriously triggers a stock warning.
+   *
+   * @param item - The cart item to resolve availability for
+   * @returns The available quantity, or `undefined` when unknown
+   * @see Requirements 5.1, 5.2
+   */
+  const availableQuantityFor = (item: CartItem): number | undefined => {
+    const source = item.scanType === 'stock_item'
+      ? item.stockItem?.quantity
+      : item.part?.in_stock
+
+    if (typeof source !== 'number' || !Number.isFinite(source)) {
+      return undefined
+    }
+
+    return source
+  }
+
+  /**
+   * Whether a single cart item requests more than its available stock.
+   *
+   * The availability source is scan-type-aware:
+   * - `stock_item` scans compare against the scanned Stock_Item's `quantity`.
+   * - `part` scans compare against the Part's `in_stock` total.
+   *
+   * Items whose availability is not yet known (lookup in flight, or a
+   * `stock_item` scan without a loaded stock item / a `part` scan without a
+   * loaded part) do not warn.
+   *
+   * @param item - The cart item to evaluate
+   * @returns true when the requested quantity exceeds availability
+   * @see Requirements 5.1, 5.2, 5.3
+   */
+  const itemHasStockWarning = (item: CartItem): boolean => {
+    const available = availableQuantityFor(item)
+    if (available === undefined) {
+      return false
+    }
+    return item.quantity > available
+  }
+
+  /**
+   * Looks up part details for a cart item from InvenTree.
+   *
+   * In barcode mode (default), this uses `scanBarcodeWithStock`, which resolves
+   * both the Part and any linked Stock_Item from a single scan:
+   * - A resolved Stock_Item classifies the item as `stock_item` and stores the
+   *   stock item alongside its part.
+   * - A resolved Part with no Stock_Item classifies the item as `part`.
+   * - Neither resolving sets the item to an error state.
+   *
+   * In part-search mode, this uses `searchParts` and always classifies the
+   * result as `part` with no specific Stock_Item.
+   *
+   * When the item was created under the Add_Full_Quantity toggle
+   * (`pendingFullQuantity`), the resolved full quantity is applied once the
+   * lookup completes and the flag is cleared. This is a fire-and-forget async
+   * operation.
    *
    * @param item - The cart item to look up
-   * @see Requirements 2.2, 3.1, 3.2, 3.3
+   * @see Requirements 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 2.2, 3.1, 3.2, 3.3
    */
   const lookupPart = async (item: CartItem): Promise<void> => {
     // Skip lookup if no service is provided
@@ -148,12 +254,15 @@ export const useCheckoutCart = (inventreeService?: InventreeService): UseCheckou
 
     try {
       let part: Part | null = null
+      let stockItem: StockItem | null = null
 
       if (searchMode.value === 'barcode') {
-        // Use InvenTree barcode scanning API (default)
-        part = await inventreeService.scanBarcode(item.barcode)
+        // Requirement 1.1: Resolve both the Part and any linked Stock_Item.
+        const result = await inventreeService.scanBarcodeWithStock(item.barcode)
+        part = result.part
+        stockItem = result.stockItem
       } else {
-        // Use part search API
+        // Part Search mode always yields a part-level scan (Requirement 1.6).
         const parts = await inventreeService.searchParts(item.barcode)
         part = parts.length > 0 ? (parts[0] ?? null) : null
       }
@@ -165,8 +274,8 @@ export const useCheckoutCart = (inventreeService?: InventreeService): UseCheckou
         return
       }
 
-      if (!part) {
-        // Requirement 3.2: No results - set error state
+      if (!part && !stockItem) {
+        // Requirement 1.4 / 3.2: No results - set error state
         cartItem.status = 'error'
         cartItem.errorMessage = searchMode.value === 'barcode'
           ? `Barcode not found: ${item.barcode}`
@@ -176,9 +285,31 @@ export const useCheckoutCart = (inventreeService?: InventreeService): UseCheckou
         return
       }
 
-      // Requirement 3.1: Success - update with part data
-      cartItem.part = part
+      if (searchMode.value === 'barcode' && stockItem) {
+        // Requirement 1.2: Barcode resolved a specific Stock_Item.
+        cartItem.stockItem = stockItem
+        cartItem.scanType = 'stock_item'
+        if (part) {
+          cartItem.part = part
+        }
+      } else {
+        // Requirement 1.3 / 1.6: Part-only barcode or part-search result.
+        cartItem.scanType = 'part'
+        if (part) {
+          cartItem.part = part
+        }
+      }
+
       cartItem.status = 'loaded'
+
+      // Requirement 3.4, 3.5, 3.7: Apply the full quantity for items added
+      // under the Add_Full_Quantity toggle now that the lookup has resolved.
+      if (cartItem.pendingFullQuantity) {
+        cartItem.quantity = fullQuantityFor(cartItem)
+        cartItem.lastModifiedAt = Date.now()
+        cartItem.pendingFullQuantity = false
+      }
+
       // Trigger reactivity by reassigning the array
       cartItems.value = [...cartItems.value]
     } catch (error) {
@@ -199,28 +330,59 @@ export const useCheckoutCart = (inventreeService?: InventreeService): UseCheckou
   }
 
   /**
-   * Adds a new item or increments quantity of existing item
+   * Adds a new item or increments quantity of existing item.
+   *
+   * When `options.addFullQuantity` is enabled, a scan sets the quantity to the
+   * full available amount for the item rather than incrementing by one:
+   * - Existing item already loaded → quantity is set to `fullQuantityFor(item)`.
+   * - Existing item still loading → `pendingFullQuantity` is flagged so the
+   *   in-flight lookup applies the full quantity on resolve.
+   * - New item → created with `pendingFullQuantity` set so the lookup applies
+   *   the full quantity once the part/stock item resolves.
+   *
+   * When the toggle is off, the existing scan-to-increment-by-one behavior is
+   * preserved for all scan types.
+   *
    * @param barcode - The scanned barcode string
+   * @param options - Optional behavior flags; `addFullQuantity` sets the item
+   *   to its full available quantity instead of incrementing by one
    * @returns The created or updated CartItem, or null if barcode is invalid
-   * @see Requirements 2.1, 2.3, 2.4
+   * @see Requirements 3.3, 3.4, 3.5, 3.6, 3.7, 6.2
    */
-  const addOrIncrementItem = (barcode: string): CartItem | null => {
+  const addOrIncrementItem = (
+    barcode: string,
+    options?: { addFullQuantity?: boolean }
+  ): CartItem | null => {
     // Validate barcode - ignore empty or whitespace-only
     const trimmedBarcode = barcode.trim()
     if (!trimmedBarcode) {
       return null
     }
 
+    const addFullQuantity = options?.addFullQuantity === true
     const now = Date.now()
 
     // Check if barcode already exists in cart (Requirement 2.3)
     const existingItemId = barcodeIndex.get(trimmedBarcode)
 
     if (existingItemId) {
-      // Find and increment existing item (Requirement 2.4 - immediate increment)
+      // Find and update existing item (Requirement 2.4 - immediate update)
       const existingItem = cartItems.value.find(item => item.id === existingItemId)
       if (existingItem) {
-        existingItem.quantity++
+        if (addFullQuantity) {
+          if (existingItem.status === 'loaded') {
+            // Requirement 3.6: Re-scan sets (not increments) to full quantity.
+            existingItem.quantity = fullQuantityFor(existingItem)
+            existingItem.pendingFullQuantity = false
+          } else {
+            // Lookup still in flight - defer applying the full quantity until
+            // the async lookup resolves (Requirement 3.4, 3.5).
+            existingItem.pendingFullQuantity = true
+          }
+        } else {
+          // Requirement 3.3, 6.2: Toggle off preserves increment-by-one.
+          existingItem.quantity++
+        }
         existingItem.lastModifiedAt = now
 
         // Update modification order - move to end of stack
@@ -240,8 +402,12 @@ export const useCheckoutCart = (inventreeService?: InventreeService): UseCheckou
       barcode: trimmedBarcode,
       quantity: 1,
       status: 'loading',
+      scanType: 'part',
       addedAt: now,
-      lastModifiedAt: now
+      lastModifiedAt: now,
+      // Requirement 3.4, 3.5, 3.7: Defer full-quantity resolution to the async
+      // lookup, which knows the resolved part/stock item.
+      pendingFullQuantity: addFullQuantity
     }
 
     // Add to cart items
@@ -401,10 +567,10 @@ export const useCheckoutCart = (inventreeService?: InventreeService): UseCheckou
       }
     }
 
-    // Check for stock warnings (Requirement 6.6)
-    const stockWarningItems = cartItems.value.filter(
-      item => item.part && item.quantity > item.part.in_stock
-    )
+    // Check for stock warnings using scan-type-aware availability
+    // (Requirements 4.3, 5.1, 5.2, 5.3): stock_item lines are gated against the
+    // scanned stock item's quantity, part lines against the part's in_stock.
+    const stockWarningItems = cartItems.value.filter(item => itemHasStockWarning(item))
     if (stockWarningItems.length > 0) {
       return {
         success: false,
@@ -445,8 +611,63 @@ export const useCheckoutCart = (inventreeService?: InventreeService): UseCheckou
           continue
         }
 
+        // Build the removal note: prefer the user-supplied reason, always
+        // retaining the scanned barcode for traceability (Requirement 4.4).
+        const removalNote = reason
+          ? `${reason} (barcode: ${item.barcode})`
+          : `Self-checkout kiosk removal for barcode: ${item.barcode}`
+
+        // Requirement 4.1: A stock_item scan draws down only the scanned stock
+        // item via a single removeStock call — no getStockItems distribution.
+        if (item.scanType === 'stock_item' && item.stockItem) {
+          const stockItem = item.stockItem
+
+          // Requirement 4.3: Defensive re-check against the scanned stock item's
+          // quantity. The stock-warning gate should already block this, but if
+          // reached, mark the item in error rather than over-removing.
+          if (item.quantity > stockItem.quantity) {
+            failedItems.push(item)
+            item.status = 'error'
+            item.errorMessage = `Requested ${item.quantity} exceeds stock item quantity ${stockItem.quantity}`
+            continue
+          }
+
+          try {
+            // Requirement 4.1: Single removal targeting the scanned stock item.
+            await inventreeService.removeStock(stockItem.pk, {
+              quantity: item.quantity,
+              notes: removalNote
+            })
+
+            // Requirement 4.5: Receipt line attributes to the scanned stock item.
+            if (makeReceipt) {
+              receiptLines.push({
+                partName: item.part.name,
+                ipn: item.part.IPN,
+                revision: item.part.revision,
+                vendor: stockItem.batch,
+                quantity: item.quantity,
+                stockNotes: stockItem.notes || '',
+                stockItemPk: stockItem.pk
+              })
+            }
+
+            processedCount++
+          } catch (error) {
+            // Stock removal failed - mark item as failed (Requirement 6.3)
+            failedItems.push(item)
+            item.status = 'error'
+            item.errorMessage = error instanceof Error
+              ? error.message
+              : 'Failed to remove stock'
+          }
+
+          continue
+        }
+
         try {
-          // Get stock items for the part (Requirement 6.1)
+          // Requirement 4.2: Part scans keep the existing distribution across
+          // all of the part's stock items via getStockItems.
           const stockItems = await inventreeService.getStockItems(item.part.pk)
 
           if (stockItems.length === 0) {
@@ -471,12 +692,6 @@ export const useCheckoutCart = (inventreeService?: InventreeService): UseCheckou
 
             // Calculate how much to remove from this stock item
             const removeFromThis = Math.min(remainingToRemove, stockItem.quantity)
-
-            // Build the removal note: prefer the user-supplied reason, always
-            // retaining the scanned barcode for traceability.
-            const removalNote = reason
-              ? `${reason} (barcode: ${item.barcode})`
-              : `Self-checkout kiosk removal for barcode: ${item.barcode}`
 
             // Remove stock from this stock item
             await inventreeService.removeStock(stockItem.pk, {
@@ -588,11 +803,15 @@ export const useCheckoutCart = (inventreeService?: InventreeService): UseCheckou
   )
 
   /**
-   * Whether any item has quantity exceeding available stock
-   * @see Requirement 6.6
+   * Whether any item has quantity exceeding its scan-type-aware availability.
+   *
+   * `stock_item` lines are compared against the scanned Stock_Item quantity and
+   * `part` lines against the Part's `in_stock` total.
+   *
+   * @see Requirements 5.1, 5.2, 5.3
    */
   const hasStockWarnings = computed(() =>
-    cartItems.value.some(item => item.part && item.quantity > item.part.in_stock)
+    cartItems.value.some(item => itemHasStockWarning(item))
   )
 
   // Internal state accessors for testing
@@ -619,6 +838,9 @@ export const useCheckoutCart = (inventreeService?: InventreeService): UseCheckou
     isEmpty,
     totalItems,
     hasStockWarnings,
+
+    // Per-item helpers
+    itemHasStockWarning,
 
     // Internal state accessors (for testing)
     getBarcodeIndex,
