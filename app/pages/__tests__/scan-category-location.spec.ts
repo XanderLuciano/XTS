@@ -181,8 +181,9 @@ describe('Scan Category/Location - Unit Tests - Property 4', () => {
     // onMounted reads the saved category pk from localStorage
     expect(content).toContain('localStorage.getItem(\'inventree_last_category\')')
 
-    // The restoration logic finds a matching category by pk
-    expect(content).toContain('categories.value.find(c => c.pk === pk)')
+    // The restoration logic finds a matching category by pk (from the
+    // filtered/labelled list so structural categories are excluded)
+    expect(content).toContain('categoryItems.value.find(c => c.pk === pk)')
   })
 })
 

@@ -32,6 +32,11 @@ export interface StockItem {
 export interface PartCategory {
   pk: number
   name: string
+  /** Full path including parent categories, e.g. "A/B". Provided by InvenTree. */
+  pathstring?: string
+  parent?: number | null
+  /** When true, the category is a structural container and parts cannot be assigned to it. */
+  structural?: boolean
 }
 
 export interface StockLocation {

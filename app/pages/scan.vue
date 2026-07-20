@@ -127,6 +127,14 @@ const locations = ref<StockLocation[]>([])
 const selectedCategory = ref<PartCategory | undefined>(undefined)
 const selectedLocation = ref<StockLocation | undefined>(undefined)
 
+// Selectable categories: hide structural containers (parts can't be assigned to
+// them) and show the full path (e.g. "A/B") so nested categories are unambiguous.
+const categoryItems = computed(() =>
+  categories.value
+    .filter(c => !c.structural)
+    .map(c => ({ ...c, label: c.pathstring || c.name }))
+)
+
 watch(createStock, async (checked) => {
   if (checked) {
     await nextTick()
@@ -218,7 +226,7 @@ onMounted(async () => {
   const savedCategoryPk = localStorage.getItem('inventree_last_category')
   if (savedCategoryPk) {
     const pk = Number(savedCategoryPk)
-    const match = categories.value.find(c => c.pk === pk)
+    const match = categoryItems.value.find(c => c.pk === pk)
     if (match) selectedCategory.value = match
   }
 
@@ -282,7 +290,7 @@ const lookupProduct = async (barcode: string, index: number) => {
       const savedCategoryPk = localStorage.getItem('inventree_last_category')
       if (savedCategoryPk) {
         const pk = Number(savedCategoryPk)
-        selectedCategory.value = categories.value.find(c => c.pk === pk) || undefined
+        selectedCategory.value = categoryItems.value.find(c => c.pk === pk) || undefined
       } else {
         selectedCategory.value = undefined
       }
@@ -839,10 +847,10 @@ onMounted(() => {
               <label class="block text-sm font-medium mb-1">Part Category</label>
               <USelectMenu
                 v-model="selectedCategory"
-                :items="categories"
+                :items="categoryItems"
                 placeholder="Select category..."
                 searchable
-                option-attribute="name"
+                option-attribute="label"
                 value-attribute="pk"
                 class="w-full"
               />
@@ -857,6 +865,7 @@ onMounted(() => {
                 searchable
                 option-attribute="name"
                 value-attribute="pk"
+                :clear="true"
                 class="w-full"
               />
             </div>

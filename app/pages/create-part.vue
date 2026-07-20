@@ -30,6 +30,10 @@ const toast = useToast()
 
 const isLoading = ref(false)
 
+// When enabled, the part name mirrors the part number so users only type it once
+// (useful when a part is only known by its number).
+const useIpnAsName = ref(false)
+
 const stockQuantityInput = ref<ComponentPublicInstance | null>(null)
 
 // Load persisted settings from localStorage (SSR-safe)
@@ -50,6 +54,15 @@ const partForm = reactive<PartForm>({
 const vendorItems = ref(
   VENDOR_OPTIONS.map(v => ({ label: v, value: v }))
 )
+
+// Mirror the part number into the name when the "same as part number" toggle is on.
+watch(useIpnAsName, (on) => {
+  if (on) partForm.name = partForm.IPN
+})
+
+watch(() => partForm.IPN, (ipn) => {
+  if (useIpnAsName.value) partForm.name = ipn
+})
 
 /**
  * Add a custom vendor typed by the user so it persists as the selected value.
@@ -149,7 +162,11 @@ const isLoadingCategories = ref(false)
 const selectedCategory = ref<number | null>(null)
 
 const categoryItems = computed(() =>
-  categories.value.map(c => ({ label: c.name, value: c.pk }))
+  categories.value
+    // Structural categories are containers only — parts cannot be assigned to them
+    .filter(c => !c.structural)
+    // Use the full path (e.g. "A/B") so nested categories are unambiguous
+    .map(c => ({ label: c.pathstring || c.name, value: c.pk }))
 )
 
 // Location state (optional location for initial stock)
@@ -580,7 +597,14 @@ const createPart = async () => {
             placeholder="e.g. Fork Arm"
             size="lg"
             class="w-full"
+            :disabled="useIpnAsName"
           />
+          <div class="flex items-center gap-2 mt-2">
+            <UCheckbox v-model="useIpnAsName" />
+            <label class="text-sm text-gray-600 dark:text-gray-400">
+              Same as part number
+            </label>
+          </div>
         </UFormField>
 
         <!-- Description -->
@@ -689,6 +713,7 @@ const createPart = async () => {
               placeholder="Select a location..."
               :loading="isLoadingLocations"
               :search-input="true"
+              :clear="true"
               class="w-full"
               @update:model-value="(val: number | null) => selectedLocation = val"
             />
