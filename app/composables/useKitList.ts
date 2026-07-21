@@ -374,8 +374,12 @@ export const useKitList = (inventreeService?: InventreeService): UseKitList => {
       return
     }
 
-    // Duplicate barcode on the same item — highlight, don't double-count.
-    if (item.scans.some(s => s.barcode === trimmed)) {
+    // Re-scanning the same barcode increments the picked count so multi-quantity
+    // items can be kitted by scanning the same stock item repeatedly. Once the
+    // item already has enough scans to satisfy kitQty, further duplicate scans
+    // are ignored (just re-highlight) to avoid over-counting.
+    const isDuplicate = item.scans.some(s => s.barcode === trimmed)
+    if (isDuplicate && item.scans.length >= item.kitQty) {
       highlightedItemId.value = item.id
       return
     }

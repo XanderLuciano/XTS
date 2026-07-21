@@ -246,6 +246,20 @@ onMounted(() => {
   } else {
     fetchAssemblies()
   }
+
+  // Press "/" to jump focus to the barcode input (matches checkout / stock-take).
+  const handleKeydown = (event: KeyboardEvent) => {
+    if (event.key !== '/') return
+    const tag = (event.target as HTMLElement)?.tagName
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+    event.preventDefault()
+    focusInput()
+  }
+
+  window.addEventListener('keydown', handleKeydown)
+  onUnmounted(() => {
+    window.removeEventListener('keydown', handleKeydown)
+  })
 })
 </script>
 
@@ -386,7 +400,14 @@ onMounted(() => {
               autofocus
               class="flex-1"
               @keyup.enter="handleScan"
-            />
+            >
+              <template #trailing>
+                <UKbd
+                  value="/"
+                  size="sm"
+                />
+              </template>
+            </UInput>
             <div class="text-right text-sm">
               <div class="text-gray-500">
                 Scanned
@@ -622,7 +643,7 @@ onMounted(() => {
                     >
                       <UBadge
                         v-for="(s, sIdx) in item.scans"
-                        :key="s.barcode"
+                        :key="`${s.barcode}-${sIdx}`"
                         :color="s.matchKind === 'exact' ? 'success' : 'warning'"
                         variant="subtle"
                         size="xs"

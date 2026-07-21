@@ -167,14 +167,46 @@ describe('useKitList - scanning', () => {
     expect(kit.unmatchedScans.value[0]?.reason).toContain('not found')
   })
 
-  it('does not double-count a duplicate barcode on the same item', async () => {
+  it('re-scanning the same barcode increments the picked count up to kitQty', async () => {
+    // BOM quantity is 2, so kitQty starts at 2.
     const kit = useKitList(makeService() as never)
     await kit.loadKit(assemblyArg)
     await flush()
 
     await kit.scan('PN-001-A-NRG-100')
+    expect(kit.items.value[0]!.scans).toHaveLength(1)
+    expect(kit.items.value[0]!.status).toBe('partial')
+
+    // Scanning the same item again fills the second required unit.
+    await kit.scan('PN-001-A-NRG-100')
+    expect(kit.items.value[0]!.scans).toHaveLength(2)
+    expect(kit.items.value[0]!.status).toBe('complete')
+  })
+
+  it('does not count duplicate scans beyond kitQty', async () => {
+    const kit = useKitList(makeService() as never)
+    await kit.loadKit(assemblyArg)
+    await flush()
+
+    // kitQty is 2 — a third scan of the same barcode must not over-count.
+    await kit.scan('PN-001-A-NRG-100')
+    await kit.scan('PN-001-A-NRG-100')
+    await kit.scan('PN-001-A-NRG-100')
+    expect(kit.items.value[0]!.scans).toHaveLength(2)
+    expect(kit.items.value[0]!.status).toBe('complete')
+  })
+
+  it('does not double-count a duplicate barcode once the item is complete (qty 1)', async () => {
+    const kit = useKitList(makeService() as never)
+    await kit.loadKit(assemblyArg)
+    await flush()
+
+    // Lower the requirement to 1, then confirm re-scanning doesn't over-count.
+    kit.updateKitQty(kit.items.value[0]!.id, 1)
+    await kit.scan('PN-001-A-NRG-100')
     await kit.scan('PN-001-A-NRG-100')
     expect(kit.items.value[0]!.scans).toHaveLength(1)
+    expect(kit.items.value[0]!.status).toBe('complete')
   })
 })
 
