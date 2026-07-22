@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import type { Part, PartCategory, StockItem } from '~/types/inventree'
+import type { Part, PartCategory, StockItem, StockLocation } from '~/types/inventree'
 import type { DropdownMenuItem } from '@nuxt/ui'
 import { generateBarcode, extractBarcodeFromNotes, setBarcodeInNotes } from '~/utils/barcode'
+import { describeLocationCode } from '~/utils/locationCode'
 
 const VENDOR_OPTIONS = ['YihShan', 'UMT', 'NRG', 'Prime', 'CIM', 'CIMTAS', 'KMS']
 
@@ -20,6 +21,7 @@ const pageSizeOptions = [10, 25, 50, 100, 500]
 const isLoading = ref(false)
 const printingPartPk = ref<number | null>(null)
 const categoryMap = ref<Map<number, string>>(new Map())
+const locationMap = ref<Map<number, string>>(new Map())
 
 // Part detail modal state
 const isDetailOpen = ref(false)
@@ -352,6 +354,11 @@ const getCategoryName = (categoryId: number | null): string => {
   return categoryMap.value.get(categoryId) || '—'
 }
 
+const getLocationName = (locationId: number | null): string => {
+  if (locationId == null) return ''
+  return locationMap.value.get(locationId) || `Location #${locationId}`
+}
+
 onMounted(() => {
   loadPrinterSettings()
   listenForUsbEvents()
@@ -375,6 +382,14 @@ onMounted(() => {
       map.set(c.pk, c.name)
     }
     categoryMap.value = map
+  }).catch(() => { /* non-critical */ })
+
+  inventree.getLocations().then((locs: StockLocation[]) => {
+    const map = new Map<number, string>()
+    for (const l of locs) {
+      map.set(l.pk, l.name)
+    }
+    locationMap.value = map
   }).catch(() => { /* non-critical */ })
 })
 </script>
@@ -710,6 +725,9 @@ onMounted(() => {
                         Quantity
                       </th>
                       <th class="text-left px-3 py-2 font-medium text-gray-600 dark:text-gray-400">
+                        Location
+                      </th>
+                      <th class="text-left px-3 py-2 font-medium text-gray-600 dark:text-gray-400">
                         Serial
                       </th>
                       <th class="w-10 px-2 py-2" />
@@ -775,6 +793,24 @@ onMounted(() => {
                       </td>
                       <td class="px-3 py-2 text-right font-medium">
                         {{ item.quantity }}
+                      </td>
+                      <td class="px-3 py-2">
+                        <div
+                          v-if="item.location != null"
+                          class="text-xs flex items-center gap-1"
+                        >
+                          <UIcon
+                            name="i-lucide-map-pin"
+                            class="w-3 h-3 text-gray-400 shrink-0"
+                          />
+                          <UTooltip :text="describeLocationCode(getLocationName(item.location))">
+                            <span class="font-mono whitespace-nowrap">{{ getLocationName(item.location) }}</span>
+                          </UTooltip>
+                        </div>
+                        <span
+                          v-else
+                          class="text-gray-400 text-xs"
+                        >—</span>
                       </td>
                       <td class="px-3 py-2 text-gray-500 text-xs">
                         {{ item.serial || '—' }}
